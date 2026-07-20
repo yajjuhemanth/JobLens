@@ -3,8 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}JobLens{% endblock %}</title>
-    <meta name="description" content="Track, verify and check your eligibility for government & private job notifications — fact-checked by AI.">
+    <title>{% block title %}TrueNotice — Fact-Checked Job Notifications{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}TrueNotice tracks government & private job notifications, fact-checks every detail against official sources, and tells you if you're eligible — before you apply.{% endblock %}">
+    <link rel="canonical" href="{% block canonical %}{{ request.url_root.rstrip('/') }}{{ request.path }}{% endblock %}">
+    <meta name="robots" content="{% block robots_meta %}index, follow{% endblock %}">
+
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="TrueNotice">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}TrueNotice — Fact-Checked Job Notifications{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Track, verify, and check your eligibility for government & private job notifications — fact-checked by AI against official sources.{% endblock %}">
+    <meta property="og:url" content="{{ request.url_root.rstrip('/') }}{{ request.path }}">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{% block twitter_title %}TrueNotice — Fact-Checked Job Notifications{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}Track, verify, and check your eligibility for government & private job notifications.{% endblock %}">
+
+    {% block structured_data %}{% endblock %}
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -102,7 +119,7 @@
                 <span class="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center">
                     <svg class="icon icon-sm"><use href="#i-logo"/></svg>
                 </span>
-                <span class="text-[17px] font-bold tracking-tight">JobLens</span>
+                <span class="text-[17px] font-bold tracking-tight">TrueNotice</span>
                 <span class="hidden sm:inline text-xs font-medium text-slate-400 border-l border-slate-200 pl-2.5">Notification tracker</span>
             </a>
             <div class="flex items-center gap-1.5">

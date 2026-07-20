@@ -1,6 +1,6 @@
 """
-JobLens — AI-Powered Job Notification Analyzer & Fact-Checker
-=============================================================
+TrueNotice — AI-Powered Job Notification Analyzer & Fact-Checker
+=================================================================
 Flask backend with Tavily (free web search) + Groq (free, no-credit-card
 LLM tier) integration — llama-3.3-70b-versatile synthesizes Tavily's
 search results for fact-checking + Google Dorking, openai/gpt-oss-120b
@@ -32,6 +32,7 @@ from flask import (
     Flask, request, jsonify, render_template,
     Response, abort, redirect, url_for
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from pydantic import BaseModel, Field, ValidationError
 import openai
 from openai import OpenAI
@@ -133,6 +134,23 @@ class ApplyStep(BaseModel):
     )
 
 
+class EligibilityRequirement(BaseModel):
+    """A specific eligibility criterion not covered by the base applicant profile
+    (age, reservation category, gender, qualification are tracked separately)."""
+    key: str = Field(
+        ...,
+        description="Short stable snake_case identifier, e.g. 'domicile_state', "
+        "'local_language', 'experience_years', 'pwd_status'",
+    )
+    question: str = Field(
+        ..., description="A short, direct question to ask the applicant, e.g. "
+        "'Are you domiciled in Kerala?' or 'How many years of relevant experience do you have?'"
+    )
+    criterion: str = Field(
+        ..., description="The exact source text of the criterion this question checks"
+    )
+
+
 class JobDetails(BaseModel):
     """
     Comprehensive structured output for a government or private
@@ -161,6 +179,13 @@ class JobDetails(BaseModel):
     eligibility: Optional[str] = Field(
         None,
         description="Educational qualifications, age limits, and other criteria",
+    )
+    eligibility_requirements: Optional[List[EligibilityRequirement]] = Field(
+        None,
+        description="Specific eligibility criteria that need applicant facts beyond age, "
+        "reservation category, gender, and qualification (e.g. domicile/state residency, "
+        "local language proficiency, minimum work experience, marital status, physical/medical "
+        "standards, PwD or ex-serviceman status). Empty/null if the notification has none.",
     )
     selection_process: Optional[List[SelectionStage]] = Field(
         None,
@@ -240,6 +265,12 @@ _JOB_DETAILS_SCHEMA = _to_strict_json_schema(JobDetails)
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
 app.secret_key = os.environ.get("FLASK_SECRET", os.urandom(32).hex())
+
+# Render sits in front of this app as a reverse proxy — without this, Flask
+# sees the internal http:// connection, not the public https://truenotice.me
+# request, which would corrupt every canonical/OG/sitemap URL built from
+# request.url_root.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # Ensure the SQLite schema exists before any request is served.
 db.init_db()
@@ -654,6 +685,12 @@ Rules:
 - For list fields (documents_checklist, study_resources), return arrays of strings.
 - If a field truly has no data, use null.
 - For eligibility, include both educational qualifications AND age limits, as a single freeform text block.
+- For eligibility_requirements, scan the eligibility clauses for anything that needs an applicant fact
+  BEYOND age, education qualification, reservation category, and gender (those four are already tracked
+  separately) — e.g. domicile/state residency, local language proficiency, minimum work experience,
+  marital status, physical/medical standards, PwD or ex-serviceman status, community/caste sub-certificates.
+  Emit one entry per such criterion with a short snake_case "key", a direct "question" to ask the applicant,
+  and the source "criterion" text. Return null/empty if there are none.
 - For vacancies, set "total" to the overall vacancy count and "breakdown" to a list of {{category, count}} entries for each category (General, OBC, SC, ST, EWS, PwD, etc.). Omit "breakdown" if no category-wise split is available.
 - For fees, set "breakdown" to a list of {{category, amount}} entries per applicant category, "payment_mode" to the accepted payment methods, and "notes" to any exemptions or refund policy. Omit fields with no data.
 - For selection_process, return an ordered list of stages, each with a short "stage" name (e.g. "Tier I — Prelims") and an optional "description" of what it involves.
@@ -742,7 +779,7 @@ def generate_ics(summary: str, date_str: str, description: str = "") -> str:
     ics = (
         "BEGIN:VCALENDAR\r\n"
         "VERSION:2.0\r\n"
-        "PRODID:-//JobLens//AI Job Notification Analyzer//EN\r\n"
+        "PRODID:-//TrueNotice//AI Job Notification Analyzer//EN\r\n"
         "CALSCALE:GREGORIAN\r\n"
         "METHOD:PUBLISH\r\n"
         "BEGIN:VEVENT\r\n"
@@ -817,6 +854,15 @@ def check_eligibility(profile: dict, job: dict) -> dict:
     cutoff = dates.get("age_cutoff_date") or ""
     computed_age = _compute_age(profile.get("dob", ""), cutoff)
 
+    extra_answers = profile.get("extra") or {}
+    requirements = job.get("eligibility_requirements") or []
+    extra_block = "(none)"
+    if requirements:
+        extra_block = "\n".join(
+            f"- {r.get('question')}: {extra_answers.get(r.get('key')) or 'unknown'}"
+            for r in requirements
+        )
+
     prompt = f"""You are an eligibility adjudicator for Indian government/private job
 recruitment. Decide whether the applicant meets the notification's criteria.
 
@@ -827,12 +873,16 @@ APPLICANT PROFILE:
 - Gender: {profile.get('gender') or 'unknown'}
 - Highest qualification: {profile.get('qualification') or 'unknown'}
 
+NOTIFICATION-SPECIFIC FACTS (collected for this notification's own extra criteria):
+{extra_block}
+
 NOTIFICATION ELIGIBILITY CRITERIA:
 {eligibility_text}
 
 Rules:
 - Consider age limits (apply category-based relaxation if the criteria mention it),
-  educational qualification, and any category/gender conditions.
+  educational qualification, category/gender conditions, and the notification-specific
+  facts above (domicile, language, experience, etc. — whichever apply to this notification).
 - verdict = "eligible" only if the applicant clearly meets every stated criterion;
   "not_eligible" if they clearly fail at least one; "unclear" if key info is missing.
 - reasons: short bullet points explaining the decision.
@@ -870,7 +920,7 @@ def answer_question(job: dict, analysis_text: str, question: str) -> str:
     if len(context) > GROQ_MAX_CONTENT_CHARS:
         context = context[:GROQ_MAX_CONTENT_CHARS]
 
-    prompt = f"""You are JobLens, answering a candidate's question about ONE specific
+    prompt = f"""You are TrueNotice, answering a candidate's question about ONE specific
 job notification. Answer ONLY from the verified information below. If the answer
 isn't present, say so plainly and suggest checking the official notification —
 do not invent details.
@@ -940,6 +990,127 @@ def index():
     )
 
 
+def _org_name_from_url(url: Optional[str]) -> Optional[str]:
+    """Best-effort, truthful organization identifier: the source's domain."""
+    if not url:
+        return None
+    try:
+        return urlparse(url).netloc or None
+    except ValueError:
+        return None
+
+
+def build_job_posting_ld(notif: dict) -> dict:
+    """
+    schema.org JobPosting JSON-LD — makes the page eligible for Google's
+    Jobs rich results and gives AI crawlers unambiguous, structured facts
+    (dates, vacancies, pay) instead of forcing them to parse prose.
+    """
+    data = notif["data"]
+    dates = data.get("dates") or {}
+    vacancies = data.get("vacancies") or {}
+    org_name = (
+        _org_name_from_url(notif.get("source_url"))
+        or _org_name_from_url(data.get("official_apply_portal"))
+        or _org_name_from_url(data.get("official_pdf_link"))
+    )
+
+    description_parts = []
+    if data.get("eligibility"):
+        description_parts.append(f"Eligibility: {data['eligibility']}")
+    if data.get("pay_scale"):
+        description_parts.append(f"Pay scale: {data['pay_scale']}")
+    if vacancies.get("total"):
+        description_parts.append(f"Total vacancies: {vacancies['total']}")
+    if data.get("fact_check_summary"):
+        description_parts.append(f"Fact-check: {data['fact_check_summary']}")
+    description = " ".join(description_parts) or data.get("job_title", "")
+
+    posted = (notif.get("created_at") or "")[:10] or None
+    valid_through = None
+    if dates.get("last_date"):
+        dt = _parse_date(dates["last_date"])
+        if dt:
+            valid_through = dt.strftime("%Y-%m-%d") + "T23:59:59"
+
+    ld = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": data.get("job_title"),
+        "description": description,
+        "hiringOrganization": {
+            "@type": "Organization",
+            "name": org_name or "Recruiting organization — see official notification",
+        },
+        "jobLocation": {
+            "@type": "Place",
+            "address": {"@type": "PostalAddress", "addressCountry": "IN"},
+        },
+        "directApply": bool(data.get("official_apply_portal")),
+    }
+    if posted:
+        ld["datePosted"] = posted
+    if valid_through:
+        ld["validThrough"] = valid_through
+    if data.get("official_apply_portal"):
+        ld["url"] = data["official_apply_portal"]
+    return ld
+
+
+def build_faq_ld(notif: dict) -> Optional[dict]:
+    """
+    FAQPage JSON-LD auto-generated from extracted fields — the single
+    highest-leverage GEO asset here: the Q/A phrasing matches how people
+    actually query AI answer engines and Google's "People also ask."
+    """
+    data = notif["data"]
+    dates = data.get("dates") or {}
+    vacancies = data.get("vacancies") or {}
+    title = data.get("job_title") or "this notification"
+
+    qa = []
+    if dates.get("last_date"):
+        qa.append((
+            f"What is the last date to apply for {title}?",
+            f"The last date to apply for {title} is {dates['last_date']}.",
+        ))
+    if dates.get("exam_date"):
+        qa.append((
+            f"When is the exam for {title}?",
+            f"The exam for {title} is scheduled on {dates['exam_date']}.",
+        ))
+    if vacancies.get("total"):
+        qa.append((
+            f"How many vacancies are there in {title}?",
+            f"{title} has {vacancies['total']} total vacancies.",
+        ))
+    if data.get("eligibility"):
+        qa.append((f"What is the eligibility criteria for {title}?", data["eligibility"]))
+    if data.get("pay_scale"):
+        qa.append((f"What is the pay scale for {title}?", data["pay_scale"]))
+    if data.get("fees") and (data["fees"].get("breakdown") or data["fees"].get("notes")):
+        fee_bits = [
+            f"{b['category']}: {b['amount']}"
+            for b in (data["fees"].get("breakdown") or []) if b.get("category")
+        ]
+        fee_text = "; ".join(fee_bits)
+        if data["fees"].get("notes"):
+            fee_text = (fee_text + ". " if fee_text else "") + data["fees"]["notes"]
+        if fee_text:
+            qa.append((f"What is the application fee for {title}?", fee_text))
+
+    if not qa:
+        return None
+    return {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}}
+            for q, a in qa
+        ],
+    }
+
+
 @app.route("/notification/<notif_id>")
 def notification_detail(notif_id):
     """Redesigned detail view for a single saved notification."""
@@ -947,7 +1118,13 @@ def notification_detail(notif_id):
     if not notif:
         abort(404)
     profile = db.get_profile()
-    return render_template("detail.html", notif=notif, profile=profile)
+    return render_template(
+        "detail.html",
+        notif=notif,
+        profile=profile,
+        job_ld=build_job_posting_ld(notif),
+        faq_ld=build_faq_ld(notif),
+    )
 
 
 @app.route("/analyze", methods=["POST"])
@@ -1127,19 +1304,45 @@ def api_profile():
     return jsonify({"success": True, "profile": profile})
 
 
+@app.route("/api/profile/extra", methods=["POST"])
+def api_profile_extra():
+    """Merge notification-specific eligibility answers (domicile, language, etc.)
+    into the profile's dynamic field store."""
+    payload = request.get_json(silent=True) or {}
+    answers = payload.get("answers")
+    if not isinstance(answers, dict):
+        return jsonify({"error": "answers must be an object"}), 400
+    answers = {str(k).strip(): str(v).strip() for k, v in answers.items() if str(k).strip()}
+    profile = db.save_profile_extra(answers)
+    return jsonify({"success": True, "profile": profile})
+
+
 # ─────────────────────────────────────────────────────────────────
 #  API — "Am I eligible?" and grounded Q&A
 # ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/notifications/<notif_id>/eligibility", methods=["POST"])
 def api_eligibility(notif_id):
-    """Run (and cache) an eligibility check for the saved profile."""
+    """Run (and cache) an eligibility check for the saved profile.
+
+    Notifications carry their own dynamic eligibility_requirements (fields
+    beyond age/category/gender/qualification, e.g. domicile or local-language
+    proficiency). If any of those aren't yet answered, respond with
+    need_fields instead of running the check, so the caller can prompt for
+    exactly the facts this notification requires.
+    """
     notif = db.get_notification(notif_id)
     if not notif:
         return jsonify({"error": "Notification not found."}), 404
     profile = db.get_profile()
     if not profile or not profile.get("dob"):
         return jsonify({"error": "Set your profile first to check eligibility."}), 400
+
+    requirements = notif["data"].get("eligibility_requirements") or []
+    extra_answers = profile.get("extra") or {}
+    missing = [r for r in requirements if not (extra_answers.get(r.get("key")) or "").strip()]
+    if missing:
+        return jsonify({"need_fields": missing})
 
     try:
         verdict = check_eligibility(profile, notif["data"])
@@ -1232,7 +1435,7 @@ def notification_calendar(notif_id):
     ics_content = (
         "BEGIN:VCALENDAR\r\n"
         "VERSION:2.0\r\n"
-        "PRODID:-//JobLens//AI Job Notification Analyzer//EN\r\n"
+        "PRODID:-//TrueNotice//AI Job Notification Analyzer//EN\r\n"
         "CALSCALE:GREGORIAN\r\n"
         "METHOD:PUBLISH\r\n"
         + "".join(blocks)
@@ -1244,6 +1447,98 @@ def notification_calendar(notif_id):
         mimetype="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.ics"'},
     )
+
+
+# ─────────────────────────────────────────────────────────────────
+#  SEO / GEO — robots.txt, sitemap.xml, llms.txt
+# ─────────────────────────────────────────────────────────────────
+
+# Search engines get the default `*` group. AI answer-engine crawlers get
+# their own explicit groups (same rules) so the site's AI-friendly stance
+# is unambiguous to anyone auditing robots.txt — some crawlers only
+# recognize the version that matches their exact user-agent token.
+_AI_CRAWLERS = [
+    "GPTBot", "ChatGPT-User", "OAI-SearchBot",   # OpenAI
+    "ClaudeBot", "anthropic-ai", "Claude-Web",    # Anthropic
+    "PerplexityBot", "Perplexity-User",            # Perplexity
+    "Google-Extended",                              # Google Gemini / AI Overviews training
+    "CCBot",                                        # Common Crawl (feeds many LLMs)
+    "Applebot-Extended",                            # Apple Intelligence
+]
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    """Allow indexing of public content; keep API/print/compare out of search."""
+    disallow = ["/api/", "/compare", "/*/print"]
+    lines = ["User-agent: *"] + [f"Disallow: {p}" for p in disallow] + [""]
+    for bot in _AI_CRAWLERS:
+        lines.append(f"User-agent: {bot}")
+        lines.extend(f"Disallow: {p}" for p in disallow)
+        lines.append("")
+    lines.append(f"Sitemap: {request.url_root.rstrip('/')}/sitemap.xml")
+    return Response("\n".join(lines), mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """XML sitemap covering the home page and every saved notification."""
+    base = request.url_root.rstrip("/")
+    urls = [{"loc": base + "/", "changefreq": "daily", "priority": "1.0", "lastmod": None}]
+    for n in db.list_notifications():
+        lastmod = (n.get("created_at") or "")[:10] or None
+        urls.append({
+            "loc": f"{base}/notification/{n['id']}",
+            "changefreq": "daily",
+            "priority": "0.8",
+            "lastmod": lastmod,
+        })
+
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for u in urls:
+        parts.append("<url>")
+        parts.append(f"<loc>{escape(u['loc'])}</loc>")
+        if u["lastmod"]:
+            parts.append(f"<lastmod>{u['lastmod']}</lastmod>")
+        parts.append(f"<changefreq>{u['changefreq']}</changefreq>")
+        parts.append(f"<priority>{u['priority']}</priority>")
+        parts.append("</url>")
+    parts.append("</urlset>")
+    return Response("".join(parts), mimetype="application/xml")
+
+
+@app.route("/llms.txt")
+def llms_txt():
+    """
+    llms.txt (llmstxt.org) — a curated, plain-text map of the site for AI
+    crawlers and RAG pipelines, mirroring what robots.txt/sitemap.xml do
+    for search engines.
+    """
+    notifs = db.list_notifications()
+    base = request.url_root.rstrip("/")
+    lines = [
+        "# TrueNotice",
+        "",
+        "> TrueNotice tracks government and private job notifications, "
+        "fact-checks every detail (dates, vacancies, pay, eligibility) "
+        "against official sources using AI, and tells applicants whether "
+        "they personally qualify.",
+        "",
+        "Each notification page states its confidence level and lists any "
+        "discrepancies found versus the official source — cite the "
+        "specific notification page, not this index, when referencing a "
+        "date, vacancy count, or eligibility detail.",
+        "",
+        "## Notifications",
+        "",
+    ]
+    for n in notifs[:200]:
+        last_date = n.get("last_date")
+        suffix = f" — last date to apply: {last_date}" if last_date else ""
+        lines.append(f"- [{n['job_title']}]({base}/notification/{n['id']}){suffix}")
+    lines += ["", "## Site", "", f"- [Dashboard]({base}/)"]
+    return Response("\n".join(lines), mimetype="text/plain")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1260,7 +1555,7 @@ if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
 
     print("\n" + "═" * 58)
-    print("  JobLens — AI Job Notification Analyzer")
+    print("  TrueNotice — AI Job Notification Analyzer")
     print("═" * 58)
     print(f"  Server  : http://localhost:{port}")
     print(f"  Debug   : {debug}")

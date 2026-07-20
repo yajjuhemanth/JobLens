@@ -1,8 +1,8 @@
 """
-JobLens — SQLite persistence layer
-==================================
+TrueNotice — SQLite persistence layer
+======================================
 Uses Python's stdlib ``sqlite3`` (no extra dependency). Stores analyzed
-job notifications and a single applicant profile so JobLens works like a
+job notifications and a single applicant profile so TrueNotice works like a
 real, returning-user app: a Home dashboard, a watchlist, per-notification
 eligibility caching, and grounded Q&A — all without re-running analysis.
 
@@ -60,10 +60,15 @@ def init_db() -> None:
                 category      TEXT,
                 gender        TEXT,
                 qualification TEXT,
+                extra_json    TEXT,
                 updated_at    TEXT
             )
             """
         )
+        # extra_json was added after initial release — patch existing DBs.
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(profile)").fetchall()]
+        if "extra_json" not in cols:
+            conn.execute("ALTER TABLE profile ADD COLUMN extra_json TEXT")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -195,6 +200,7 @@ def get_profile() -> Optional[dict]:
         "category": row["category"],
         "gender": row["gender"],
         "qualification": row["qualification"],
+        "extra": json.loads(row["extra_json"]) if row["extra_json"] else {},
         "updated_at": row["updated_at"],
     }
 
@@ -214,6 +220,27 @@ def save_profile(dob: str, category: str, gender: str, qualification: str) -> di
                 updated_at = excluded.updated_at
             """,
             (dob, category, gender, qualification, datetime.utcnow().isoformat()),
+        )
+    clear_all_eligibility()
+    return get_profile()
+
+
+def save_profile_extra(answers: dict) -> dict:
+    """Merge dynamic, notification-specific eligibility answers (domicile,
+    local language, experience, etc.) into the profile and invalidate cached
+    eligibility verdicts, since the answer set changed."""
+    with _connect() as conn:
+        row = conn.execute("SELECT extra_json FROM profile WHERE id = 1").fetchone()
+        extra = json.loads(row["extra_json"]) if row and row["extra_json"] else {}
+        extra.update(answers)
+        conn.execute(
+            """
+            INSERT INTO profile (id, extra_json, updated_at) VALUES (1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                extra_json = excluded.extra_json,
+                updated_at = excluded.updated_at
+            """,
+            (json.dumps(extra), datetime.utcnow().isoformat()),
         )
     clear_all_eligibility()
     return get_profile()
