@@ -1,0 +1,106 @@
+{# ── Reusable content renderers for a JobDetails object ── #}
+
+{% macro card(title, icon) %}
+<section class="bg-white rounded-xl border border-slate-200 p-5 {{ 'break-inside-avoid' }}">
+    <div class="flex items-center gap-2.5 mb-3.5">
+        <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
+            <svg class="icon icon-sm"><use href="#{{ icon }}"/></svg>
+        </span>
+        <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ title }}</h3>
+    </div>
+    <div class="text-sm text-slate-700 leading-relaxed">{{ caller() }}</div>
+</section>
+{% endmacro %}
+
+
+{% macro dates(d) %}
+{% set rows = [
+    ('Start date', d.start_date, 'text-emerald-600'),
+    ('Last date', d.last_date, 'text-red-600'),
+    ('Exam date', d.exam_date, 'text-amber-600'),
+    ('Age cutoff', d.age_cutoff_date, 'text-slate-700'),
+] %}
+<div class="space-y-2">
+{% for label, val, color in rows if val %}
+    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+        <span class="text-xs font-medium text-slate-500">{{ label }}</span>
+        <span class="text-sm font-semibold tnum {{ color }}">{{ val }}</span>
+    </div>
+{% endfor %}
+</div>
+{% endmacro %}
+
+
+{% macro vacancy(v) %}
+{% if v.total %}
+<div class="mb-3 px-3 py-3 rounded-lg bg-accent-soft text-center">
+    <p class="text-2xl font-extrabold tnum text-accent">{{ v.total }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Total vacancies</p>
+</div>
+{% endif %}
+{% if v.breakdown %}
+<div class="space-y-1.5">
+{% for b in v.breakdown if b.category %}
+    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+        <span class="text-xs font-medium text-slate-500">{{ b.category }}</span>
+        <span class="text-sm font-semibold tnum text-slate-800">{{ b.count }}</span>
+    </div>
+{% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{% macro fees(f) %}
+{% if f.breakdown %}
+<div class="space-y-1.5 mb-3">
+{% for b in f.breakdown if b.category %}
+    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+        <span class="text-xs font-medium text-slate-500">{{ b.category }}</span>
+        <span class="text-sm font-semibold tnum text-slate-800">{{ b.amount }}</span>
+    </div>
+{% endfor %}
+</div>
+{% endif %}
+{% if f.payment_mode %}<p class="text-xs text-slate-500 mb-1"><span class="font-semibold text-slate-600">Payment:</span> {{ f.payment_mode }}</p>{% endif %}
+{% if f.notes %}<div class="text-sm">{{ f.notes|fmt }}</div>{% endif %}
+{% endmacro %}
+
+
+{% macro stages(items) %}
+<ol class="space-y-3">
+{% for s in items if s.stage %}
+    <li class="flex gap-3">
+        <span class="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center mt-0.5 tnum">{{ loop.index }}</span>
+        <div>
+            <p class="text-sm font-semibold text-slate-900">{{ s.stage }}</p>
+            {% if s.description %}<div class="text-xs text-slate-500 mt-0.5">{{ s.description|fmt }}</div>{% endif %}
+        </div>
+    </li>
+{% endfor %}
+</ol>
+{% endmacro %}
+
+
+{% macro steps(items) %}
+<ol class="space-y-3">
+{% for s in items|sort(attribute='step_number') if s.instruction %}
+    <li class="flex gap-3">
+        <span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent-soft text-accent text-xs font-bold flex items-center justify-center mt-0.5 tnum">{{ s.step_number or loop.index }}</span>
+        <div class="text-sm text-slate-700">{{ s.instruction|fmt }}</div>
+    </li>
+{% endfor %}
+</ol>
+{% endmacro %}
+
+
+{% macro bullets(items) %}
+<ul class="space-y-2">
+{% for item in items %}
+    <li class="flex items-start gap-2.5">
+        <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0"></span>
+        <span>{{ item }}</span>
+    </li>
+{% endfor %}
+</ul>
+{% endmacro %}

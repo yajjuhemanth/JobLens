@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% set d = notif.data %}
+{% set st = status_of(notif.last_date) %}
+{% block title %}{{ d.job_title }} — JobLens{% endblock %}
+
+{% block content %}
+<a href="/" class="no-print inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-accent mb-4">
+    <svg class="icon icon-sm"><use href="#i-back"/></svg> Dashboard
+</a>
+
+<!-- ── Header ── -->
+<div class="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 mb-5">
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+        <span class="chip chip-{{ st.key }}" {% if st.iso %}data-countdown="{{ st.iso }}"{% endif %}>{{ st.label }}</span>
+        {% if d.confidence_level %}
+        {% set cc = {'High':'chip-open','Medium':'chip-soon','Low':'chip-closed'} %}
+        <span class="chip {{ cc.get(d.confidence_level, 'chip-unknown') }}">
+            <svg class="icon" style="width:.85rem;height:.85rem"><use href="#i-shield"/></svg>
+            {{ d.confidence_level }} confidence
+        </span>
+        {% endif %}
+    </div>
+    <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight leading-snug">{{ d.job_title }}</h1>
+    {% if notif.source_url %}
+    <a href="{{ notif.source_url }}" target="_blank" rel="noopener noreferrer" class="no-print inline-flex items-center gap-1 text-xs text-slate-400 hover:text-accent mt-1.5 break-all">
+        {{ notif.source_url }} <svg class="icon" style="width:.8rem;height:.8rem"><use href="#i-external"/></svg>
+    </a>
+    {% endif %}
+
+    <!-- Action buttons -->
+    <div class="no-print flex flex-wrap gap-2 mt-4">
+        {% if d.official_apply_portal %}
+        <a href="{{ d.official_apply_portal }}" target="_blank" rel="noopener noreferrer"
+           class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent hover:bg-accent-dark text-white text-sm font-semibold transition-colors">
+            Apply now <svg class="icon icon-sm"><use href="#i-external"/></svg>
+        </a>
+        {% endif %}
+        {% if d.official_pdf_link %}
+        <a href="{{ d.official_pdf_link }}" target="_blank" rel="noopener noreferrer"
+           class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
+            <svg class="icon icon-sm"><use href="#i-doc"/></svg> Official PDF
+        </a>
+        {% endif %}
+        {% if d.dates and (d.dates.start_date or d.dates.last_date or d.dates.exam_date) %}
+        <a href="/notification/{{ notif.id }}/calendar.ics"
+           class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
+            <svg class="icon icon-sm"><use href="#i-calendar"/></svg> Add to calendar
+        </a>
+        {% endif %}
+        <a href="/notification/{{ notif.id }}/print" target="_blank"
+           class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
+            <svg class="icon icon-sm"><use href="#i-printer"/></svg> Print / PDF
+        </a>
+        <button id="pin-btn" data-pinned="{{ 'true' if notif.pinned else 'false' }}"
+           class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-sm font-medium transition-colors
+                  {{ 'border-accent text-accent bg-accent-soft' if notif.pinned else 'border-slate-300 text-slate-700 hover:bg-slate-50' }}">
+            <svg class="icon icon-sm"><use href="#i-pin"/></svg> <span id="pin-label">{{ 'On watchlist' if notif.pinned else 'Watchlist' }}</span>
+        </button>
+    </div>
+</div>
+
+<!-- ── Trust / fact-check panel ── -->
+{% if d.fact_check_summary or d.discrepancies %}
+{% set has_disc = d.discrepancies and d.discrepancies|length > 0 %}
+<div class="rounded-xl border p-5 mb-5 {{ 'bg-amber-50/60 border-amber-200' if has_disc else 'bg-emerald-50/60 border-emerald-200' }}">
+    <div class="flex items-center gap-2 mb-2">
+        <svg class="icon icon-sm {{ 'text-amber-600' if has_disc else 'text-emerald-600' }}"><use href="#{{ 'i-alert' if has_disc else 'i-shield' }}"/></svg>
+        <h3 class="text-sm font-bold text-slate-800">Fact-check {{ '— points to verify' if has_disc else '— details corroborated' }}</h3>
+    </div>
+    {% if d.fact_check_summary %}<div class="text-sm text-slate-600">{{ d.fact_check_summary|fmt }}</div>{% endif %}
+    {% if has_disc %}
+    <ul class="mt-2 space-y-1.5">
+        {% for issue in d.discrepancies %}
+        <li class="flex items-start gap-2 text-sm text-amber-800">
+            <svg class="icon flex-shrink-0 mt-0.5 text-amber-500" style="width:1rem;height:1rem"><use href="#i-alert"/></svg>
+            <span>{{ issue }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    <p class="text-xs text-slate-400 mt-3">AI-assisted verification. Always confirm against the official notification before applying.</p>
+</div>
+{% endif %}
+
+<!-- ── Am I eligible? ── -->
+<div id="elig-card" class="bg-white rounded-xl border border-slate-200 p-5 mb-5">
+    <div class="flex items-center justify-between gap-3 mb-1">
+        <div class="flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center"><svg class="icon icon-sm"><use href="#i-cap"/></svg></span>
+            <h3 class="text-sm font-bold">Am I eligible?</h3>
+        </div>
+        <button id="elig-btn" class="no-print px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-dark text-white text-xs font-semibold transition-colors">
+            {{ 'Re-check' if notif.eligibility else 'Check eligibility' }}
+        </button>
+    </div>
+    <div id="elig-body" class="mt-3 text-sm">
+        {% if not profile or not profile.dob %}
+        <p class="text-slate-500">Set your <button onclick="openProfile()" class="text-accent font-medium underline">profile</button> once to check eligibility against this and every notification.</p>
+        {% elif notif.eligibility %}
+        {% include "_eligibility.html" with context %}
+        {% else %}
+        <p class="text-slate-500">Click <span class="font-medium text-slate-700">Check eligibility</span> to compare this notification against your profile.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── Content sections ── -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    {% if d.dates and (d.dates.start_date or d.dates.last_date or d.dates.exam_date or d.dates.age_cutoff_date) %}
+        {% call m.card('Important dates', 'i-calendar') %}{{ m.dates(d.dates) }}{% endcall %}
+    {% endif %}
+    {% if d.pay_scale %}
+        {% call m.card('Pay scale', 'i-cash') %}{{ d.pay_scale|fmt }}{% endcall %}
+    {% endif %}
+    {% if d.vacancies and (d.vacancies.total or d.vacancies.breakdown) %}
+        {% call m.card('Vacancies', 'i-users') %}{{ m.vacancy(d.vacancies) }}{% endcall %}
+    {% endif %}
+    {% if d.fees and (d.fees.breakdown or d.fees.payment_mode or d.fees.notes) %}
+        {% call m.card('Application fees', 'i-card') %}{{ m.fees(d.fees) }}{% endcall %}
+    {% endif %}
+    {% if d.eligibility %}
+        <div class="lg:col-span-2">{% call m.card('Eligibility criteria', 'i-cap') %}{{ d.eligibility|fmt }}{% endcall %}</div>
+    {% endif %}
+    {% if d.selection_process %}
+        <div class="lg:col-span-2">{% call m.card('Selection process', 'i-clipboard') %}{{ m.stages(d.selection_process) }}{% endcall %}</div>
+    {% endif %}
+    {% if d.how_to_apply_guide %}
+        <div class="lg:col-span-2">{% call m.card('How to apply', 'i-steps') %}{{ m.steps(d.how_to_apply_guide) }}{% endcall %}</div>
+    {% endif %}
+    {% if d.documents_checklist %}
+        {% call m.card('Documents checklist', 'i-doc') %}{{ m.bullets(d.documents_checklist) }}{% endcall %}
+    {% endif %}
+    {% if d.study_resources %}
+        {% call m.card('Study resources', 'i-book') %}{{ m.bullets(d.study_resources) }}{% endcall %}
+    {% endif %}
+    {% if d.helpdesk_info %}
+        <div class="lg:col-span-2">{% call m.card('Helpdesk', 'i-phone') %}{{ d.helpdesk_info|fmt }}{% endcall %}</div>
+    {% endif %}
+</div>
+
+<!-- ── Ask a question ── -->
+<div class="no-print bg-white rounded-xl border border-slate-200 p-5 mt-5">
+    <div class="flex items-center gap-2.5 mb-3">
+        <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center"><svg class="icon icon-sm"><use href="#i-send"/></svg></span>
+        <div>
+            <h3 class="text-sm font-bold">Ask about this notification</h3>
+            <p class="text-xs text-slate-400">Answers use only this notification's verified details.</p>
+        </div>
+    </div>
+    <div id="ask-log" class="space-y-3 mb-3 hidden"></div>
+    <div class="flex gap-2">
+        <input id="ask-input" type="text" placeholder="e.g. What's the age limit for OBC candidates?"
+               class="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent">
+        <button id="ask-btn" class="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold flex items-center gap-1.5">
+            <svg class="icon icon-sm"><use href="#i-send"/></svg> Ask
+        </button>
+    </div>
+    <div class="flex flex-wrap gap-1.5 mt-2.5" id="ask-suggestions">
+        {% for q in ['What documents do I need?', 'What is the last date to apply?', 'How is the selection done?'] %}
+        <button class="ask-chip text-xs px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-accent hover:text-accent transition-colors">{{ q }}</button>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+    'use strict';
+    const NOTIF_ID = {{ notif.id|tojson }};
+
+    // ── Pin toggle ──
+    const pinBtn = document.getElementById('pin-btn');
+    pinBtn.addEventListener('click', async () => {
+        const r = await fetch(`/api/notifications/${NOTIF_ID}/pin`, { method: 'POST' });
+        if (!r.ok) return showToast('Could not update watchlist.');
+        const { pinned } = await r.json();
+        pinBtn.dataset.pinned = pinned;
+        document.getElementById('pin-label').textContent = pinned ? 'On watchlist' : 'Watchlist';
+        pinBtn.className = 'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-sm font-medium transition-colors ' +
+            (pinned ? 'border-accent text-accent bg-accent-soft' : 'border-slate-300 text-slate-700 hover:bg-slate-50');
+    });
+
+    // ── Eligibility check ──
+    const eligBtn = document.getElementById('elig-btn');
+    const eligBody = document.getElementById('elig-body');
+    eligBtn.addEventListener('click', async () => {
+        eligBtn.disabled = true; const orig = eligBtn.textContent; eligBtn.textContent = 'Checking…';
+        try {
+            const r = await fetch(`/api/notifications/${NOTIF_ID}/eligibility`, { method: 'POST' });
+            const data = await r.json();
+            if (!r.ok || data.error) throw new Error(data.error || 'Check failed');
+            eligBody.innerHTML = renderEligibility(data.eligibility);
+            eligBtn.textContent = 'Re-check';
+        } catch (err) {
+            showToast(err.message);
+            eligBtn.textContent = orig;
+        } finally { eligBtn.disabled = false; }
+    });
+
+    function renderEligibility(e) {
+        const map = {
+            eligible:      ['#i-check', 'text-emerald-600', 'bg-emerald-50 border-emerald-200', 'You appear eligible'],
+            not_eligible:  ['#i-x', 'text-red-600', 'bg-red-50 border-red-200', 'You may not be eligible'],
+            unclear:       ['#i-alert', 'text-amber-600', 'bg-amber-50 border-amber-200', 'Eligibility unclear'],
+        };
+        const [icon, color, box, label] = map[e.verdict] || map.unclear;
+        const list = (arr, cls) => (arr && arr.length)
+            ? `<ul class="mt-1 space-y-1">${arr.map(x => `<li class="flex gap-2 ${cls}"><span>•</span><span>${escapeHtml(x)}</span></li>`).join('')}</ul>` : '';
+        return `
+            <div class="rounded-lg border p-3.5 ${box}">
+                <div class="flex items-center gap-2">
+                    <svg class="icon ${color}"><use href="${icon}"/></svg>
+                    <span class="font-bold text-slate-800">${label}</span>
+                    ${e.computed_age ? `<span class="text-xs text-slate-500 ml-auto tnum">Age at cutoff: ${escapeHtml(e.computed_age)}</span>` : ''}
+                </div>
+                ${e.reasons && e.reasons.length ? `<div class="mt-2 text-sm text-slate-600"><span class="font-semibold">Why:</span>${list(e.reasons, 'text-slate-600')}</div>` : ''}
+                ${e.blockers && e.blockers.length ? `<div class="mt-2 text-sm text-red-700"><span class="font-semibold">Watch out:</span>${list(e.blockers, 'text-red-700')}</div>` : ''}
+                <p class="text-xs text-slate-400 mt-2.5">AI estimate — verify against the official eligibility clause.</p>
+            </div>`;
+    }
+
+    // ── Ask a question ──
+    const askInput = document.getElementById('ask-input');
+    const askBtn = document.getElementById('ask-btn');
+    const askLog = document.getElementById('ask-log');
+    async function ask(q) {
+        q = (q || askInput.value).trim();
+        if (!q) return;
+        askInput.value = '';
+        askLog.classList.remove('hidden');
+        const row = document.createElement('div');
+        row.innerHTML = `
+            <div class="text-sm font-semibold text-slate-800 mb-1">${escapeHtml(q)}</div>
+            <div class="text-sm text-slate-500 answer">Thinking…</div>`;
+        askLog.appendChild(row);
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        try {
+            const r = await fetch(`/api/notifications/${NOTIF_ID}/ask`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question: q }),
+            });
+            const data = await r.json();
+            if (!r.ok || data.error) throw new Error(data.error || 'Failed');
+            row.querySelector('.answer').className = 'text-sm text-slate-700 answer';
+            row.querySelector('.answer').innerHTML = formatAnswer(data.answer);
+        } catch (err) {
+            row.querySelector('.answer').className = 'text-sm text-red-600 answer';
+            row.querySelector('.answer').textContent = err.message;
+        }
+    }
+    askBtn.addEventListener('click', () => ask());
+    askInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ask(); } });
+    document.querySelectorAll('.ask-chip').forEach(c => c.addEventListener('click', () => ask(c.textContent)));
+
+    // ── Helpers ──
+    function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+    function formatAnswer(s) {
+        return escapeHtml(s)
+            .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900">$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobLens — AI Job Notification Analyzer & Fact-Checker</title>
+    <meta name="description" content="Paste a job notification URL or upload a PDF to get AI-powered fact-checking, Google Dorking for official PDFs, and a beautiful applicant dashboard.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            50:  '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe',
+                            300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1',
+                            600: '#4f46e5', 700: '#4338ca', 800: '#3730a3',
+                            900: '#312e81', 950: '#1e1b4b',
+                        },
+                    },
+                    animation: {
+                        'fade-in':     'fadeIn 0.6s ease-out forwards',
+                        'slide-up':    'slideUp 0.5s ease-out forwards',
+                        'pulse-glow':  'pulseGlow 2s ease-in-out infinite',
+                        'scan-line':   'scanLine 2s linear infinite',
+                        'bounce-subtle':'bounceSub 1s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        fadeIn:    { '0%': { opacity: 0 }, '100%': { opacity: 1 } },
+                        slideUp:   { '0%': { opacity: 0, transform: 'translateY(30px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+                        pulseGlow: { '0%,100%': { boxShadow: '0 0 20px rgba(99,102,241,0.3)' }, '50%': { boxShadow: '0 0 40px rgba(99,102,241,0.6)' } },
+                        scanLine:  { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(100%)' } },
+                        bounceSub: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-4px)' } },
+                    },
+                },
+            },
+        }
+    </script>
+
+    <style>
+        /* ── Base reset & smooth scrolling ── */
+        *, *::before, *::after { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+        /* ── Glassmorphism card ── */
+        .glass {
+            background: rgba(255,255,255,0.04);
+            backdrop-filter: blur(16px) saturate(1.4);
+            -webkit-backdrop-filter: blur(16px) saturate(1.4);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .glass-strong {
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(24px) saturate(1.6);
+            -webkit-backdrop-filter: blur(24px) saturate(1.6);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        /* ── Gradient text ── */
+        .gradient-text {
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* ── Animated background mesh ── */
+        .mesh-bg {
+            background:
+                radial-gradient(ellipse 60% 50% at 10% 20%, rgba(99,102,241,0.12) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 60% at 85% 70%, rgba(168,85,247,0.10) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 40% at 50% 90%, rgba(244,114,182,0.08) 0%, transparent 60%);
+        }
+
+        /* ── Card hover glow ── */
+        .card-glow {
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+        .card-glow:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(99,102,241,0.15);
+            border-color: rgba(129,140,248,0.3);
+        }
+        .card-glow::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+            transition: left 0.5s ease;
+        }
+        .card-glow:hover::before { left: 100%; }
+
+        /* ── Scanner animation ── */
+        .scanner-bar {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #818cf8, #c084fc, transparent);
+            animation: scanLine 2s linear infinite;
+        }
+
+        /* ── Step indicator ── */
+        .step-dot { transition: all 0.5s ease; }
+        .step-dot.active {
+            background: #818cf8;
+            box-shadow: 0 0 16px rgba(129,140,248,0.6);
+        }
+        .step-dot.done { background: #34d399; box-shadow: 0 0 12px rgba(52,211,153,0.5); }
+
+        /* ── Drag-drop zone ── */
+        .drop-zone { transition: all 0.3s ease; }
+        .drop-zone.dragover {
+            border-color: #818cf8 !important;
+            background: rgba(99,102,241,0.08) !important;
+        }
+
+        /* ── Staggered entrance ── */
+        .stagger-1 { animation-delay: 0.05s; }
+        .stagger-2 { animation-delay: 0.10s; }
+        .stagger-3 { animation-delay: 0.15s; }
+        .stagger-4 { animation-delay: 0.20s; }
+        .stagger-5 { animation-delay: 0.25s; }
+        .stagger-6 { animation-delay: 0.30s; }
+        .stagger-7 { animation-delay: 0.35s; }
+        .stagger-8 { animation-delay: 0.40s; }
+        .stagger-9 { animation-delay: 0.45s; }
+        .stagger-10{ animation-delay: 0.50s; }
+        .stagger-11{ animation-delay: 0.55s; }
+        .stagger-12{ animation-delay: 0.60s; }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 99px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+        /* ── Toast ── */
+        .toast-enter { animation: slideUp 0.4s ease-out forwards; }
+    </style>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-white font-sans mesh-bg">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         HERO & INPUT SECTION
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="hero-section" class="min-h-screen flex flex-col">
+
+        <!-- Navbar -->
+        <nav class="w-full px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-purple-500 flex items-center justify-center text-lg font-bold shadow-lg shadow-brand-500/20">J</div>
+                <span class="text-xl font-bold tracking-tight">Job<span class="text-brand-400">Lens</span></span>
+            </div>
+        </nav>
+
+        <!-- Hero content -->
+        <main class="flex-1 flex items-center justify-center px-4 sm:px-6">
+            <div class="max-w-3xl w-full text-center space-y-8">
+
+                <!-- Badge -->
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-xs font-medium text-brand-300 animate-fade-in">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Powered by Groq &bull; Web Search Grounding
+                </div>
+
+                <!-- Title -->
+                <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight tracking-tight animate-slide-up">
+                    Decode Any<br>
+                    <span class="gradient-text">Job Notification</span><br>
+                    in Seconds
+                </h1>
+
+                <!-- Subtitle -->
+                <p class="text-base sm:text-lg text-slate-400 max-w-xl mx-auto animate-slide-up" style="animation-delay:0.15s">
+                    Paste a notification URL or upload a PDF. Our AI fact-checks every detail,
+                    locates the official PDF via Google Dorking, and builds a comprehensive applicant dashboard.
+                </p>
+
+                <!-- Input card -->
+                <div id="input-card" class="glass-strong rounded-2xl p-6 sm:p-8 space-y-5 animate-slide-up" style="animation-delay:0.25s">
+
+                    <!-- URL input -->
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-brand-400 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                        </div>
+                        <input
+                            type="url"
+                            id="url-input"
+                            placeholder="Paste job notification URL  (e.g., ssc.nic.in/notice/…)"
+                            class="w-full pl-12 pr-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 transition-all text-sm sm:text-base"
+                        >
+                    </div>
+
+                    <!-- Divider -->
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">or upload PDF</span>
+                        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
+                    </div>
+
+                    <!-- PDF drop zone -->
+                    <label
+                        id="pdf-dropzone"
+                        class="drop-zone flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-slate-700/60 bg-white/[0.02] cursor-pointer hover:border-brand-500/40 hover:bg-brand-500/[0.03] transition-all"
+                    >
+                        <svg class="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                        <span class="text-sm text-slate-400"><span class="text-brand-400 font-medium">Click to upload</span> or drag & drop</span>
+                        <span class="text-xs text-slate-600">PDF files only — max 16 MB</span>
+                        <input type="file" id="pdf-input" accept=".pdf" class="hidden">
+                    </label>
+                    <p id="file-name" class="text-xs text-brand-300 text-center hidden"></p>
+
+                    <!-- Analyze button -->
+                    <button
+                        id="analyze-btn"
+                        type="button"
+                        class="w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-600 to-purple-600 hover:from-brand-500 hover:to-purple-500 text-white font-semibold text-sm sm:text-base shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none"
+                    >
+                        <span class="flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
+                            Analyze &amp; Fact-Check
+                        </span>
+                    </button>
+                </div>
+
+                <!-- Trust badges -->
+                <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-slate-500 animate-fade-in" style="animation-delay:0.5s">
+                    <span class="flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.403 12.652a3 3 0 000-5.304 3 3 0 00-3.75-3.751 3 3 0 00-5.305 0 3 3 0 00-3.751 3.75 3 3 0 000 5.305 3 3 0 003.75 3.751 3 3 0 005.305 0 3 3 0 003.751-3.75zm-2.546-4.46a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/></svg>
+                        AI Fact-Checked
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-brand-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.293 2.293a1 1 0 011.414 0l7 7A1 1 0 0117 11h-1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-3a1 1 0 00-1-1H9a1 1 0 00-1 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-6H3a1 1 0 01-.707-1.707l7-7z" clip-rule="evenodd"/></svg>
+                        Google Dorking
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 1a6 6 0 00-3.815 10.631C7.237 12.5 8 13.443 8 14.456v.644a.5.5 0 00.5.5h3a.5.5 0 00.5-.5v-.644c0-1.013.762-1.957 1.815-2.825A6 6 0 0010 1zM8.5 17a.5.5 0 00.5.5h2a.5.5 0 00.5-.5v-.5h-3v.5zm0 1.5a.5.5 0 00.5.5h2a.5.5 0 00.5-.5V18h-3v.5z"/></svg>
+                        Structured Output
+                    </span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════════
+         LOADING SECTION
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="loading-section" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm">
+        <div class="text-center space-y-8 max-w-md px-6">
+
+            <!-- Animated logo -->
+            <div class="relative mx-auto w-20 h-20">
+                <div class="absolute inset-0 rounded-2xl bg-gradient-to-br from-brand-500 to-purple-500 animate-pulse-glow opacity-60"></div>
+                <div class="relative w-full h-full rounded-2xl bg-gradient-to-br from-brand-600 to-purple-600 flex items-center justify-center text-3xl font-black shadow-2xl">J</div>
+            </div>
+
+            <h2 class="text-xl font-bold text-white">Analyzing Notification</h2>
+
+            <!-- Step indicators -->
+            <div class="space-y-3 text-left" id="loading-steps">
+                <div class="flex items-center gap-3 step-row" data-step="0">
+                    <div class="step-dot w-3 h-3 rounded-full bg-slate-700 flex-shrink-0"></div>
+                    <span class="text-sm text-slate-500">Fetching content…</span>
+                </div>
+                <div class="flex items-center gap-3 step-row" data-step="1">
+                    <div class="step-dot w-3 h-3 rounded-full bg-slate-700 flex-shrink-0"></div>
+                    <span class="text-sm text-slate-500">Running AI analysis…</span>
+                </div>
+                <div class="flex items-center gap-3 step-row" data-step="2">
+                    <div class="step-dot w-3 h-3 rounded-full bg-slate-700 flex-shrink-0"></div>
+                    <span class="text-sm text-slate-500">Fact-checking via live web search…</span>
+                </div>
+                <div class="flex items-center gap-3 step-row" data-step="3">
+                    <div class="step-dot w-3 h-3 rounded-full bg-slate-700 flex-shrink-0"></div>
+                    <span class="text-sm text-slate-500">Building your dashboard…</span>
+                </div>
+            </div>
+
+            <!-- Scanner bar -->
+            <div class="w-full h-1 rounded-full bg-slate-800 overflow-hidden">
+                <div class="scanner-bar w-1/2 h-full rounded-full"></div>
+            </div>
+
+            <p class="text-xs text-slate-600">This typically takes 20–40 seconds</p>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════════
+         ERROR TOAST
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="error-toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-lg w-[90%]">
+        <div class="glass-strong rounded-xl px-5 py-4 flex items-start gap-3 border-red-500/30 shadow-xl shadow-red-500/10">
+            <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg>
+            <div>
+                <p class="text-sm font-semibold text-red-300">Analysis Failed</p>
+                <p id="error-message" class="text-xs text-slate-400 mt-1"></p>
+            </div>
+            <button onclick="hideError()" class="ml-auto text-slate-500 hover:text-white transition-colors">&times;</button>
+        </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════════
+         DASHBOARD SECTION
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="dashboard-section" class="hidden">
+
+        <!-- Dashboard header -->
+        <div class="sticky top-0 z-40 glass-strong border-b border-white/5">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <button onclick="resetApp()" class="p-2 rounded-lg hover:bg-white/5 transition-colors text-slate-400 hover:text-white" title="New Analysis">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+                    </button>
+                    <div>
+                        <h1 id="dash-title" class="text-lg sm:text-xl font-bold gradient-text leading-tight"></h1>
+                        <p class="text-xs text-slate-500 mt-0.5">AI Fact-Checked &bull; Live Search Verified</p>
+                    </div>
+                </div>
+                <div id="dash-actions" class="flex items-center gap-2 flex-wrap"></div>
+            </div>
+        </div>
+
+        <!-- Dashboard grid -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+            <div id="cards-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"></div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-white/5">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+                <p>&copy; 2026 JobLens &mdash; AI-powered job notification analysis</p>
+                <p>Data fact-checked via Groq web search grounding. Always verify with official sources.</p>
+            </div>
+        </footer>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════════════════
+         JAVASCRIPT
+         ═══════════════════════════════════════════════════════════ -->
+    <script>
+    (() => {
+        'use strict';
+
+        // ── DOM refs ──
+        const urlInput      = document.getElementById('url-input');
+        const pdfInput      = document.getElementById('pdf-input');
+        const pdfDropzone   = document.getElementById('pdf-dropzone');
+        const fileNameEl    = document.getElementById('file-name');
+        const analyzeBtn    = document.getElementById('analyze-btn');
+        const heroSection   = document.getElementById('hero-section');
+        const loadingSection= document.getElementById('loading-section');
+        const dashSection   = document.getElementById('dashboard-section');
+        const errorToast    = document.getElementById('error-toast');
+        const errorMessage  = document.getElementById('error-message');
+        const dashTitle     = document.getElementById('dash-title');
+        const dashActions   = document.getElementById('dash-actions');
+        const cardsGrid     = document.getElementById('cards-grid');
+
+        let selectedFile = null;
+        let currentData  = null;
+
+
+        // ─────────────────────────────────────────────────────────
+        //  File input & drag-drop
+        // ─────────────────────────────────────────────────────────
+
+        pdfInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                selectedFile = file;
+                fileNameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+                fileNameEl.classList.remove('hidden');
+                urlInput.value = '';
+                urlInput.disabled = true;
+            }
+        });
+
+        pdfDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            pdfDropzone.classList.add('dragover');
+        });
+        pdfDropzone.addEventListener('dragleave', () => pdfDropzone.classList.remove('dragover'));
+        pdfDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            pdfDropzone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                selectedFile = file;
+                pdfInput.files = e.dataTransfer.files;
+                fileNameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+                fileNameEl.classList.remove('hidden');
+                urlInput.value = '';
+                urlInput.disabled = true;
+            }
+        });
+
+        urlInput.addEventListener('input', () => {
+            if (urlInput.value.trim()) {
+                selectedFile = null;
+                pdfInput.value = '';
+                fileNameEl.classList.add('hidden');
+            }
+            urlInput.disabled = false;
+        });
+
+
+        // ─────────────────────────────────────────────────────────
+        //  Loading animation
+        // ─────────────────────────────────────────────────────────
+
+        let stepTimer = null;
+
+        function startLoading() {
+            heroSection.classList.add('hidden');
+            loadingSection.classList.remove('hidden');
+            dashSection.classList.add('hidden');
+            hideError();
+
+            const steps = document.querySelectorAll('.step-row');
+            let current = 0;
+
+            function advanceStep() {
+                if (current > 0 && current <= steps.length) {
+                    const prev = steps[current - 1];
+                    prev.querySelector('.step-dot').classList.remove('active');
+                    prev.querySelector('.step-dot').classList.add('done');
+                    prev.querySelector('span').classList.remove('text-slate-500');
+                    prev.querySelector('span').classList.add('text-emerald-400');
+                }
+                if (current < steps.length) {
+                    const cur = steps[current];
+                    cur.querySelector('.step-dot').classList.add('active');
+                    cur.querySelector('span').classList.remove('text-slate-500');
+                    cur.querySelector('span').classList.add('text-white');
+                    current++;
+                    stepTimer = setTimeout(advanceStep, 4000 + Math.random() * 3000);
+                }
+            }
+            advanceStep();
+        }
+
+        function stopLoading() {
+            if (stepTimer) clearTimeout(stepTimer);
+            loadingSection.classList.add('hidden');
+            // Reset step UI
+            document.querySelectorAll('.step-row').forEach(row => {
+                row.querySelector('.step-dot').className = 'step-dot w-3 h-3 rounded-full bg-slate-700 flex-shrink-0';
+                row.querySelector('span').className = 'text-sm text-slate-500';
+            });
+        }
+
+
+        // ─────────────────────────────────────────────────────────
+        //  Error handling
+        // ─────────────────────────────────────────────────────────
+
+        function showError(msg) {
+            stopLoading();
+            heroSection.classList.remove('hidden');
+            errorMessage.textContent = msg;
+            errorToast.classList.remove('hidden');
+            errorToast.querySelector('div').classList.add('toast-enter');
+            setTimeout(hideError, 10000);
+        }
+
+        window.hideError = function() {
+            errorToast.classList.add('hidden');
+        };
+
+
+        // ─────────────────────────────────────────────────────────
+        //  Reset app to initial state
+        // ─────────────────────────────────────────────────────────
+
+        window.resetApp = function() {
+            dashSection.classList.add('hidden');
+            heroSection.classList.remove('hidden');
+            urlInput.value = '';
+            urlInput.disabled = false;
+            pdfInput.value = '';
+            selectedFile = null;
+            fileNameEl.classList.add('hidden');
+            currentData = null;
+            cardsGrid.innerHTML = '';
+            dashActions.innerHTML = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+
+        // ─────────────────────────────────────────────────────────
+        //  Analyze button handler
+        // ─────────────────────────────────────────────────────────
+
+        analyzeBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (!url && !selectedFile) {
+                showError('Please enter a notification URL or upload a PDF file.');
+                return;
+            }
+
+            analyzeBtn.disabled = true;
+            startLoading();
+
+            try {
+                const formData = new FormData();
+                if (selectedFile) {
+                    formData.append('pdf', selectedFile);
+                } else {
+                    formData.append('url', url);
+                }
+
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || result.error) {
+                    throw new Error(result.error || `Server error (${response.status})`);
+                }
+
+                currentData = result.data;
+                stopLoading();
+                renderDashboard(currentData);
+
+            } catch (err) {
+                showError(err.message || 'An unexpected error occurred. Please try again.');
+            } finally {
+                analyzeBtn.disabled = false;
+            }
+        });
+
+        // Allow Enter key in URL field
+        urlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); analyzeBtn.click(); }
+        });
+
+
+        // ─────────────────────────────────────────────────────────
+        //  Dashboard rendering
+        // ─────────────────────────────────────────────────────────
+
+        function renderDashboard(data) {
+            heroSection.classList.add('hidden');
+            dashSection.classList.remove('hidden');
+
+            // Title
+            dashTitle.textContent = data.job_title || 'Job Notification Details';
+
+            // Action buttons
+            dashActions.innerHTML = '';
+
+            if (data.official_pdf_link) {
+                dashActions.appendChild(createActionBtn(
+                    '📄 Official PDF',
+                    data.official_pdf_link,
+                    'from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-red-600/20',
+                    true
+                ));
+            }
+            if (data.official_apply_portal) {
+                dashActions.appendChild(createActionBtn(
+                    '🚀 Apply Now',
+                    data.official_apply_portal,
+                    'from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 shadow-emerald-600/20',
+                    true
+                ));
+            }
+
+            // ICS buttons for dates
+            if (data.dates) {
+                if (data.dates.last_date) {
+                    const icsUrl = `/download-ics?summary=${encodeURIComponent('⏰ Last Date — ' + data.job_title)}&date=${encodeURIComponent(data.dates.last_date)}&description=${encodeURIComponent('Last date to apply for ' + data.job_title)}`;
+                    dashActions.appendChild(createActionBtn(
+                        '📅 Add Deadline to Calendar',
+                        icsUrl,
+                        'from-brand-600 to-purple-600 hover:from-brand-500 hover:to-purple-500 shadow-brand-600/20',
+                        false
+                    ));
+                }
+                if (data.dates.exam_date) {
+                    const icsUrl = `/download-ics?summary=${encodeURIComponent('📝 Exam Day — ' + data.job_title)}&date=${encodeURIComponent(data.dates.exam_date)}&description=${encodeURIComponent('Examination date for ' + data.job_title)}`;
+                    dashActions.appendChild(createActionBtn(
+                        '📅 Add Exam Date',
+                        icsUrl,
+                        'from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-600/20',
+                        false
+                    ));
+                }
+            }
+
+            // Build cards
+            cardsGrid.innerHTML = '';
+            let idx = 0;
+
+            // Card configs: [icon, title, key/extractor, accentClass, spanCols?]
+            const cards = [
+                {
+                    icon: '📅', title: 'Important Dates', type: 'dates',
+                    accent: 'from-brand-500/20 to-purple-500/20 border-brand-500/20',
+                    iconBg: 'bg-brand-500/10 text-brand-400',
+                },
+                {
+                    icon: '💰', title: 'Pay Scale', key: 'pay_scale', type: 'markdown',
+                    accent: 'from-emerald-500/20 to-green-500/20 border-emerald-500/20',
+                    iconBg: 'bg-emerald-500/10 text-emerald-400',
+                },
+                {
+                    icon: '👥', title: 'Vacancies', key: 'vacancies', type: 'vacancy',
+                    accent: 'from-cyan-500/20 to-blue-500/20 border-cyan-500/20',
+                    iconBg: 'bg-cyan-500/10 text-cyan-400',
+                },
+                {
+                    icon: '🎓', title: 'Eligibility', key: 'eligibility', type: 'markdown',
+                    accent: 'from-violet-500/20 to-fuchsia-500/20 border-violet-500/20',
+                    iconBg: 'bg-violet-500/10 text-violet-400',
+                    span: true,
+                },
+                {
+                    icon: '📋', title: 'Selection Process', key: 'selection_process', type: 'stages',
+                    accent: 'from-amber-500/20 to-orange-500/20 border-amber-500/20',
+                    iconBg: 'bg-amber-500/10 text-amber-400',
+                    span: true,
+                },
+                {
+                    icon: '💳', title: 'Application Fees', key: 'fees', type: 'fees',
+                    accent: 'from-rose-500/20 to-pink-500/20 border-rose-500/20',
+                    iconBg: 'bg-rose-500/10 text-rose-400',
+                },
+                {
+                    icon: '📑', title: 'Documents Checklist', key: 'documents_checklist', type: 'list',
+                    accent: 'from-teal-500/20 to-emerald-500/20 border-teal-500/20',
+                    iconBg: 'bg-teal-500/10 text-teal-400',
+                },
+                {
+                    icon: '📝', title: 'How to Apply', key: 'how_to_apply_guide', type: 'steps',
+                    accent: 'from-blue-500/20 to-indigo-500/20 border-blue-500/20',
+                    iconBg: 'bg-blue-500/10 text-blue-400',
+                    span: true,
+                },
+                {
+                    icon: '📚', title: 'Study Resources', key: 'study_resources', type: 'list',
+                    accent: 'from-purple-500/20 to-violet-500/20 border-purple-500/20',
+                    iconBg: 'bg-purple-500/10 text-purple-400',
+                },
+                {
+                    icon: '☎️', title: 'Helpdesk Info', key: 'helpdesk_info', type: 'markdown',
+                    accent: 'from-slate-500/20 to-gray-500/20 border-slate-400/20',
+                    iconBg: 'bg-slate-500/10 text-slate-400',
+                },
+            ];
+
+            cards.forEach(card => {
+                let content;
+                switch (card.type) {
+                    case 'dates':    content = renderDatesCard(data.dates); break;
+                    case 'list':     content = renderListCard(data[card.key]); break;
+                    case 'markdown': content = data[card.key] ? formatText(data[card.key]) : null; break;
+                    case 'vacancy':  content = renderVacancyCard(data[card.key]); break;
+                    case 'fees':     content = renderFeesCard(data[card.key]); break;
+                    case 'stages':   content = renderStagesCard(data[card.key]); break;
+                    case 'steps':    content = renderStepsCard(data[card.key]); break;
+                    default:         content = data[card.key];
+                }
+
+                if (!content && content !== 0) return; // Skip empty cards
+
+                idx++;
+                const el = buildCard(card, content, idx);
+                cardsGrid.appendChild(el);
+            });
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+
+        // ── Build a single dashboard card ──
+
+        function buildCard(config, content, index) {
+            const div = document.createElement('div');
+            div.className = `glass card-glow rounded-2xl p-5 opacity-0 animate-slide-up stagger-${Math.min(index, 12)} ${config.span ? 'md:col-span-2' : ''}`;
+
+            const headerHTML = `
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl ${config.iconBg} flex items-center justify-center text-lg">${config.icon}</div>
+                    <h3 class="text-sm font-semibold text-white uppercase tracking-wide">${config.title}</h3>
+                </div>
+            `;
+
+            // `content` is always pre-built, already-escaped HTML from a
+            // dedicated renderer (formatText/renderDatesCard/renderListCard/etc.)
+            const bodyHTML = `<div class="text-sm text-slate-300 leading-relaxed">${content}</div>`;
+
+            div.innerHTML = headerHTML + bodyHTML;
+            return div;
+        }
+
+
+        // ── Render dates sub-card ──
+
+        function renderDatesCard(dates) {
+            if (!dates) return null;
+            const items = [
+                { label: 'Start Date',       value: dates.start_date,       color: 'text-emerald-400', dot: 'bg-emerald-400' },
+                { label: 'Last Date',         value: dates.last_date,        color: 'text-red-400',     dot: 'bg-red-400'     },
+                { label: 'Exam Date',         value: dates.exam_date,        color: 'text-amber-400',   dot: 'bg-amber-400'   },
+                { label: 'Age Cutoff Date',   value: dates.age_cutoff_date,  color: 'text-blue-400',    dot: 'bg-blue-400'    },
+            ].filter(i => i.value);
+
+            if (items.length === 0) return null;
+
+            return `<div class="space-y-3">${items.map(i => `
+                <div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2 h-2 rounded-full ${i.dot}"></span>
+                        <span class="text-xs font-medium text-slate-400">${i.label}</span>
+                    </div>
+                    <span class="text-sm font-semibold ${i.color}">${escapeHTML(i.value)}</span>
+                </div>
+            `).join('')}</div>`;
+        }
+
+
+        // ── Render list card ──
+
+        function renderListCard(items) {
+            if (!items || !Array.isArray(items) || items.length === 0) return null;
+            return `<ul class="space-y-2">${items.map(item => `
+                <li class="flex items-start gap-2.5 text-sm text-slate-300">
+                    <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0"></span>
+                    <span class="leading-relaxed">${escapeHTML(item)}</span>
+                </li>
+            `).join('')}</ul>`;
+        }
+
+
+        // ── Render vacancy card (headline total + category breakdown) ──
+
+        function renderVacancyCard(vacancies) {
+            if (!vacancies) return null;
+            const total = vacancies.total;
+            const breakdown = Array.isArray(vacancies.breakdown)
+                ? vacancies.breakdown.filter(b => b && b.category)
+                : [];
+            if (!total && breakdown.length === 0) return null;
+
+            let html = '';
+            if (total) {
+                html += `<div class="mb-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                    <p class="text-2xl font-bold text-cyan-400">${escapeHTML(total)}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Total Vacancies</p>
+                </div>`;
+            }
+            if (breakdown.length) {
+                html += `<div class="space-y-1.5">${breakdown.map(b => `
+                    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5">
+                        <span class="text-xs font-medium text-slate-400">${escapeHTML(b.category)}</span>
+                        <span class="text-sm font-semibold text-cyan-300">${escapeHTML(b.count)}</span>
+                    </div>
+                `).join('')}</div>`;
+            }
+            return html;
+        }
+
+
+        // ── Render fees card (category breakdown + payment mode/notes) ──
+
+        function renderFeesCard(fees) {
+            if (!fees) return null;
+            const breakdown = Array.isArray(fees.breakdown)
+                ? fees.breakdown.filter(b => b && b.category)
+                : [];
+            if (breakdown.length === 0 && !fees.payment_mode && !fees.notes) return null;
+
+            let html = '';
+            if (breakdown.length) {
+                html += `<div class="space-y-1.5 mb-3">${breakdown.map(b => `
+                    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5">
+                        <span class="text-xs font-medium text-slate-400">${escapeHTML(b.category)}</span>
+                        <span class="text-sm font-semibold text-rose-300">${escapeHTML(b.amount)}</span>
+                    </div>
+                `).join('')}</div>`;
+            }
+            if (fees.payment_mode) {
+                html += `<p class="text-xs text-slate-500 mb-1"><span class="font-semibold text-slate-400">Payment:</span> ${escapeHTML(fees.payment_mode)}</p>`;
+            }
+            if (fees.notes) {
+                html += formatText(fees.notes);
+            }
+            return html;
+        }
+
+
+        // ── Render selection process card (numbered stages) ──
+
+        function renderStagesCard(stages) {
+            if (!Array.isArray(stages) || stages.length === 0) return null;
+            const valid = stages.filter(s => s && s.stage);
+            if (valid.length === 0) return null;
+
+            return `<ol class="space-y-3">${valid.map((s, i) => `
+                <li class="flex gap-3">
+                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-500/15 text-amber-400 text-xs font-bold flex items-center justify-center mt-0.5">${i + 1}</span>
+                    <div>
+                        <p class="text-sm font-semibold text-white">${escapeHTML(s.stage)}</p>
+                        ${s.description ? `<div class="text-xs text-slate-400 mt-0.5">${formatText(s.description)}</div>` : ''}
+                    </div>
+                </li>
+            `).join('')}</ol>`;
+        }
+
+
+        // ── Render how-to-apply card (numbered steps) ──
+
+        function renderStepsCard(steps) {
+            if (!Array.isArray(steps) || steps.length === 0) return null;
+            const valid = steps
+                .filter(s => s && s.instruction)
+                .slice()
+                .sort((a, b) => (a.step_number || 0) - (b.step_number || 0));
+            if (valid.length === 0) return null;
+
+            return `<ol class="space-y-3">${valid.map((s, i) => `
+                <li class="flex gap-3">
+                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-500/15 text-blue-400 text-xs font-bold flex items-center justify-center mt-0.5">${s.step_number || i + 1}</span>
+                    <div class="text-sm text-slate-300 leading-relaxed">${formatText(s.instruction)}</div>
+                </li>
+            `).join('')}</ol>`;
+        }
+
+
+        // ── Lightweight, safe markdown-ish formatter for freeform AI text ──
+        // Escapes HTML first, then only ever wraps the escaped text in a
+        // small whitelisted set of tags (p/ul/ol/li/strong) — the model's
+        // raw text is never inserted as unescaped HTML.
+
+        function formatText(str) {
+            if (!str) return '';
+
+            const bulletRe = /^\s*[-•*]\s+(.*)$/;
+            const numberRe = /^\s*\d+[.)]\s+(.*)$/;
+
+            const blocks = [];
+            let current = null;
+
+            str.replace(/\r\n/g, '\n').split('\n').forEach(rawLine => {
+                const line = rawLine.trim();
+                if (!line) { current = null; return; }
+
+                const bulletMatch = line.match(bulletRe);
+                const numberMatch = line.match(numberRe);
+
+                if (bulletMatch) {
+                    if (!current || current.type !== 'ul') { current = { type: 'ul', items: [] }; blocks.push(current); }
+                    current.items.push(bulletMatch[1]);
+                } else if (numberMatch) {
+                    if (!current || current.type !== 'ol') { current = { type: 'ol', items: [] }; blocks.push(current); }
+                    current.items.push(numberMatch[1]);
+                } else {
+                    if (!current || current.type !== 'p') { current = { type: 'p', items: [] }; blocks.push(current); }
+                    current.items.push(line);
+                }
+            });
+
+            const inline = (text) => escapeHTML(text).replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>');
+
+            return blocks.map(block => {
+                if (block.type === 'ul') {
+                    return `<ul class="space-y-1.5 my-2 first:mt-0 last:mb-0">${block.items.map(i => `
+                        <li class="flex items-start gap-2">
+                            <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0"></span>
+                            <span>${inline(i)}</span>
+                        </li>
+                    `).join('')}</ul>`;
+                }
+                if (block.type === 'ol') {
+                    return `<ol class="space-y-1.5 my-2 first:mt-0 last:mb-0 list-decimal list-inside marker:text-brand-400 marker:font-semibold">${block.items.map(i => `<li class="pl-1">${inline(i)}</li>`).join('')}</ol>`;
+                }
+                return `<p class="mb-2 first:mt-0 last:mb-0">${block.items.map(inline).join('<br>')}</p>`;
+            }).join('');
+        }
+
+
+        // ── Action button builder ──
+
+        function createActionBtn(label, href, gradientClass, external) {
+            const a = document.createElement('a');
+            a.href = href;
+            if (external) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+            a.className = `inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r ${gradientClass} text-white text-xs font-semibold shadow-lg transition-all hover:scale-105 active:scale-95`;
+            a.textContent = label;
+            return a;
+        }
+
+
+        // ── HTML escaping ──
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+    })();
+    </script>
+</body>
+</html>

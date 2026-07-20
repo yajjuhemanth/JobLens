@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Compare — JobLens{% endblock %}
+
+{% block content %}
+<a href="/" class="no-print inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-accent mb-4">
+    <svg class="icon icon-sm"><use href="#i-back"/></svg> Dashboard
+</a>
+
+<h1 class="text-2xl font-extrabold tracking-tight mb-1">Compare notifications</h1>
+<p class="text-sm text-slate-500 mb-6">{{ notifs|length }} notifications side by side.</p>
+
+{% set rows = [
+    ('Status', 'status'),
+    ('Last date', 'last_date'),
+    ('Exam date', 'exam_date'),
+    ('Total vacancies', 'vacancies'),
+    ('Pay scale', 'pay'),
+    ('General fee', 'fee'),
+    ('Eligibility', 'eligibility'),
+    ('Your eligibility', 'verdict'),
+] %}
+
+<div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+<table class="w-full text-sm min-w-[640px]">
+    <thead>
+        <tr class="border-b border-slate-200">
+            <th class="text-left font-semibold text-slate-400 text-xs uppercase tracking-wide px-4 py-3 w-40 align-bottom">Field</th>
+            {% for n in notifs %}
+            <th class="text-left px-4 py-3 align-bottom">
+                <a href="/notification/{{ n.id }}" class="font-bold text-slate-900 hover:text-accent leading-snug block">{{ n.data.job_title }}</a>
+            </th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for label, kind in rows %}
+        <tr class="border-b border-slate-100 last:border-0 align-top">
+            <td class="px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">{{ label }}</td>
+            {% for n in notifs %}
+            {% set d = n.data %}
+            <td class="px-4 py-3 text-slate-700">
+                {% if kind == 'status' %}
+                    {% set st = status_of(n.last_date) %}<span class="chip chip-{{ st.key }}">{{ st.label }}</span>
+                {% elif kind == 'last_date' %}<span class="tnum">{{ d.dates.last_date if d.dates and d.dates.last_date else '—' }}</span>
+                {% elif kind == 'exam_date' %}<span class="tnum">{{ d.dates.exam_date if d.dates and d.dates.exam_date else '—' }}</span>
+                {% elif kind == 'vacancies' %}<span class="tnum font-semibold text-accent">{{ d.vacancies.total if d.vacancies and d.vacancies.total else '—' }}</span>
+                {% elif kind == 'pay' %}{{ (d.pay_scale[:120] ~ ('…' if d.pay_scale|length > 120 else '')) if d.pay_scale else '—' }}
+                {% elif kind == 'fee' %}
+                    {% set gen = namespace(v='—') %}
+                    {% if d.fees and d.fees.breakdown %}{% for b in d.fees.breakdown %}{% if 'gen' in (b.category|lower) %}{% set gen.v = b.amount %}{% endif %}{% endfor %}{% endif %}
+                    <span class="tnum">{{ gen.v }}</span>
+                {% elif kind == 'eligibility' %}<div class="text-xs text-slate-600 line-clamp-4">{{ d.eligibility if d.eligibility else '—' }}</div>
+                {% elif kind == 'verdict' %}
+                    {% set e = n.eligibility %}
+                    {% if e %}
+                        {% if e.verdict == 'eligible' %}<span class="chip chip-open">✓ Eligible</span>
+                        {% elif e.verdict == 'not_eligible' %}<span class="chip chip-closed">Not eligible</span>
+                        {% else %}<span class="chip chip-soon">Unclear</span>{% endif %}
+                    {% else %}<span class="text-xs text-slate-400">Not checked</span>{% endif %}
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

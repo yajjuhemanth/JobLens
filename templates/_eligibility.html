@@ -1,0 +1,26 @@
+{# Server render of a cached eligibility verdict. Expects `notif.eligibility`. #}
+{% set e = notif.eligibility %}
+{% set styles = {
+    'eligible':     ('i-check', 'text-emerald-600', 'bg-emerald-50 border-emerald-200', 'You appear eligible'),
+    'not_eligible': ('i-x',     'text-red-600',     'bg-red-50 border-red-200',         'You may not be eligible'),
+    'unclear':      ('i-alert', 'text-amber-600',   'bg-amber-50 border-amber-200',     'Eligibility unclear'),
+} %}
+{% set icon, color, box, label = styles.get(e.verdict, styles['unclear']) %}
+<div class="rounded-lg border p-3.5 {{ box }}">
+    <div class="flex items-center gap-2">
+        <svg class="icon {{ color }}"><use href="#{{ icon }}"/></svg>
+        <span class="font-bold text-slate-800">{{ label }}</span>
+        {% if e.computed_age %}<span class="text-xs text-slate-500 ml-auto tnum">Age at cutoff: {{ e.computed_age }}</span>{% endif %}
+    </div>
+    {% if e.reasons %}
+    <div class="mt-2 text-sm text-slate-600"><span class="font-semibold">Why:</span>
+        <ul class="mt-1 space-y-1">{% for r in e.reasons %}<li class="flex gap-2"><span>•</span><span>{{ r }}</span></li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if e.blockers %}
+    <div class="mt-2 text-sm text-red-700"><span class="font-semibold">Watch out:</span>
+        <ul class="mt-1 space-y-1">{% for b in e.blockers %}<li class="flex gap-2"><span>•</span><span>{{ b }}</span></li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    <p class="text-xs text-slate-400 mt-2.5">AI estimate — verify against the official eligibility clause.</p>
+</div>

@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — JobLens{% endblock %}
+
+{% block content %}
+<!-- ── Page heading ── -->
+<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6">
+    <div>
+        <h1 class="text-2xl font-extrabold tracking-tight">Your notifications</h1>
+        <p class="text-sm text-slate-500 mt-1">Track deadlines, verify details, and check eligibility — all in one place.</p>
+    </div>
+</div>
+
+<!-- ── KPI strip ── -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-7">
+    {% set tiles = [
+        ('Tracked', kpis.tracked, 'i-clipboard', 'text-slate-700'),
+        ('Closing ≤7 days', kpis.closing_soon, 'i-calendar', 'text-amber-600'),
+        ('Eligible for you', kpis.eligible, 'i-check', 'text-emerald-600'),
+        ('Vacancies tracked', kpis.total_vacancies, 'i-users', 'text-accent'),
+    ] %}
+    {% for label, value, icon, color in tiles %}
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="flex items-center gap-2 text-slate-400 mb-2">
+            <svg class="icon icon-sm {{ color }}"><use href="#{{ icon }}"/></svg>
+            <span class="text-xs font-semibold text-slate-500">{{ label }}</span>
+        </div>
+        <p class="text-2xl font-extrabold tnum {{ color }}">{{ '{:,}'.format(value) }}</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ── Add new notification ── -->
+<div class="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 mb-8">
+    <div class="flex items-center gap-2 mb-3">
+        <svg class="icon icon-sm text-accent"><use href="#i-plus"/></svg>
+        <h2 class="text-sm font-bold">Analyze a new notification</h2>
+    </div>
+    <div class="flex flex-col md:flex-row gap-3">
+        <input id="url-input" type="url" placeholder="Paste notification URL (e.g. ssc.nic.in/notice/…)"
+               class="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent">
+        <label id="pdf-dropzone" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-slate-300 text-sm text-slate-500 cursor-pointer hover:border-accent hover:text-accent transition-colors md:w-56">
+            <svg class="icon icon-sm"><use href="#i-upload"/></svg>
+            <span id="pdf-label">Upload PDF</span>
+            <input type="file" id="pdf-input" accept=".pdf" class="hidden">
+        </label>
+        <button id="analyze-btn" class="px-5 py-2.5 rounded-lg bg-accent hover:bg-accent-dark text-white text-sm font-semibold transition-colors">
+            Analyze
+        </button>
+    </div>
+    <p class="text-xs text-slate-400 mt-2">AI fetches, fact-checks against official sources, and files it here. Takes ~20–40s.</p>
+</div>
+
+<!-- ── Toolbar ── -->
+{% if notifications %}
+<div class="flex flex-wrap items-center gap-2 mb-3">
+    <span class="text-xs font-semibold text-slate-500 mr-1">Sort</span>
+    <select id="sort-select" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent/40">
+        <option value="deadline">Deadline (soonest)</option>
+        <option value="added">Recently added</option>
+    </select>
+    <span class="text-xs font-semibold text-slate-500 ml-2 mr-1">Show</span>
+    <select id="filter-select" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent/40">
+        <option value="all">All</option>
+        <option value="open">Open</option>
+        <option value="closing">Closing soon</option>
+        <option value="closed">Closed</option>
+    </select>
+    <span class="text-xs text-slate-400 ml-auto" id="visible-count"></span>
+</div>
+{% endif %}
+
+<!-- ── Notification list ── -->
+<div id="notif-list" class="space-y-3">
+    {% for n in notifications %}
+    {% set st = status_of(n.last_date) %}
+    {% set vac = (n.data.vacancies.total if n.data.vacancies else None) %}
+    <div class="notif-card bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all p-4 flex items-start gap-3"
+         data-id="{{ n.id }}"
+         data-status="{{ st.key }}"
+         data-days="{{ st.days if st.days is not none else 999999 }}"
+         data-added="{{ loop.index0 }}"
+         data-title="{{ n.job_title|e }}">
+        <input type="checkbox" class="cmp-check mt-1 w-4 h-4 accent-[color:var(--accent)] cursor-pointer" title="Select to compare">
+        <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-3">
+                <a href="/notification/{{ n.id }}" class="font-semibold text-slate-900 hover:text-accent transition-colors leading-snug line-clamp-2">
+                    {{ n.job_title }}
+                </a>
+                {% if n.pinned %}<svg class="icon icon-sm text-accent flex-shrink-0" title="On watchlist"><use href="#i-pin"/></svg>{% endif %}
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-xs text-slate-500">
+                <span class="chip chip-{{ st.key }}" {% if st.iso %}data-countdown="{{ st.iso }}"{% endif %}>{{ st.label }}</span>
+                {% if n.last_date %}<span class="tnum">Last date: <span class="font-medium text-slate-700">{{ n.last_date }}</span></span>{% endif %}
+                {% if vac %}<span class="tnum">{{ vac }} vacancies</span>{% endif %}
+                {% set elig = n.eligibility %}
+                {% if elig %}
+                    {% if elig.verdict == 'eligible' %}<span class="chip chip-open">✓ Eligible</span>
+                    {% elif elig.verdict == 'not_eligible' %}<span class="chip chip-closed">Not eligible</span>
+                    {% else %}<span class="chip chip-soon">Eligibility unclear</span>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex items-center gap-1 flex-shrink-0">
+            <button class="pin-btn p-1.5 rounded-lg hover:bg-slate-100 {{ 'text-accent' if n.pinned else 'text-slate-400' }}" title="Watchlist">
+                <svg class="icon icon-sm"><use href="#i-pin"/></svg>
+            </button>
+            <button class="del-btn p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600" title="Delete">
+                <svg class="icon icon-sm"><use href="#i-trash"/></svg>
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ── Empty state ── -->
+{% if not notifications %}
+<div class="bg-white rounded-xl border border-dashed border-slate-300 p-10 text-center">
+    <div class="w-12 h-12 mx-auto rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+        <svg class="icon"><use href="#i-clipboard"/></svg>
+    </div>
+    <h3 class="font-semibold text-slate-700">No notifications yet</h3>
+    <p class="text-sm text-slate-500 mt-1">Paste a job-notification URL or upload a PDF above to get started.</p>
+</div>
+{% endif %}
+
+<!-- ── Compare bar ── -->
+<div id="compare-bar" class="no-print hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40">
+    <div class="bg-slate-900 text-white rounded-full shadow-lg pl-5 pr-2 py-2 flex items-center gap-3 fade-in">
+        <span class="text-sm font-medium"><span id="cmp-count">0</span> selected</span>
+        <button id="compare-go" class="px-4 py-1.5 rounded-full bg-accent hover:bg-accent-dark text-sm font-semibold flex items-center gap-1.5">
+            <svg class="icon icon-sm"><use href="#i-compare"/></svg> Compare
+        </button>
+    </div>
+</div>
+
+<!-- ── Loading overlay ── -->
+<div id="loading" class="no-print hidden fixed inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm px-6">
+    <div class="text-center max-w-sm w-full">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-accent text-white flex items-center justify-center mb-5">
+            <svg class="icon" style="width:1.75rem;height:1.75rem"><use href="#i-shield"/></svg>
+        </div>
+        <h2 class="text-lg font-bold mb-5">Analyzing notification</h2>
+        <div class="space-y-2.5 text-left" id="load-steps">
+            <div class="load-step flex items-center gap-2.5 text-sm text-slate-400"><span class="dot w-2 h-2 rounded-full bg-slate-300"></span>Fetching content</div>
+            <div class="load-step flex items-center gap-2.5 text-sm text-slate-400"><span class="dot w-2 h-2 rounded-full bg-slate-300"></span>Searching official sources</div>
+            <div class="load-step flex items-center gap-2.5 text-sm text-slate-400"><span class="dot w-2 h-2 rounded-full bg-slate-300"></span>Fact-checking details</div>
+            <div class="load-step flex items-center gap-2.5 text-sm text-slate-400"><span class="dot w-2 h-2 rounded-full bg-slate-300"></span>Filing to your dashboard</div>
+        </div>
+        <div class="w-full h-1 rounded-full bg-slate-200 overflow-hidden mt-6">
+            <div id="load-bar" class="h-full bg-accent rounded-full transition-all duration-500" style="width:8%"></div>
+        </div>
+        <p class="text-xs text-slate-400 mt-3">Typically 20–40 seconds</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+    'use strict';
+    const urlInput = document.getElementById('url-input');
+    const pdfInput = document.getElementById('pdf-input');
+    const pdfLabel = document.getElementById('pdf-label');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const loading = document.getElementById('loading');
+    let selectedFile = null;
+
+    // ── Input handling ──
+    pdfInput.addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (f && f.type === 'application/pdf') {
+            selectedFile = f; pdfLabel.textContent = f.name.slice(0, 22);
+            urlInput.value = ''; urlInput.disabled = true;
+        }
+    });
+    urlInput.addEventListener('input', () => {
+        if (urlInput.value.trim()) { selectedFile = null; pdfInput.value = ''; pdfLabel.textContent = 'Upload PDF'; }
+        urlInput.disabled = false;
+    });
+    urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); analyze(); } });
+    analyzeBtn.addEventListener('click', analyze);
+
+    // ── Loading animation ──
+    let stepTimer = null;
+    function startLoading() {
+        loading.classList.remove('hidden');
+        const steps = [...document.querySelectorAll('.load-step')];
+        const bar = document.getElementById('load-bar');
+        let i = 0;
+        const widths = [22, 48, 72, 92];
+        (function advance() {
+            if (i > 0) { steps[i-1].classList.remove('text-slate-700','font-medium'); steps[i-1].classList.add('text-emerald-600'); steps[i-1].querySelector('.dot').className = 'dot w-2 h-2 rounded-full bg-emerald-500'; }
+            if (i < steps.length) {
+                steps[i].classList.add('text-slate-700','font-medium');
+                steps[i].querySelector('.dot').className = 'dot w-2 h-2 rounded-full bg-accent';
+                bar.style.width = widths[i] + '%';
+                i++; stepTimer = setTimeout(advance, 5000 + Math.random()*3000);
+            }
+        })();
+    }
+    function stopLoading() { clearTimeout(stepTimer); loading.classList.add('hidden'); }
+
+    async function analyze() {
+        const url = urlInput.value.trim();
+        if (!url && !selectedFile) { showToast('Enter a notification URL or upload a PDF.'); return; }
+        analyzeBtn.disabled = true; startLoading();
+        try {
+            const fd = new FormData();
+            if (selectedFile) fd.append('pdf', selectedFile); else fd.append('url', url);
+            const r = await fetch('/analyze', { method: 'POST', body: fd });
+            const data = await r.json();
+            if (!r.ok || data.error) throw new Error(data.error || `Server error (${r.status})`);
+            window.location.href = '/notification/' + data.id;
+        } catch (err) {
+            stopLoading(); analyzeBtn.disabled = false;
+            showToast(err.message || 'Analysis failed. Please try again.');
+        }
+    }
+
+    // ── Pin / delete ──
+    document.getElementById('notif-list').addEventListener('click', async (e) => {
+        const card = e.target.closest('.notif-card');
+        if (!card) return;
+        const id = card.dataset.id;
+        if (e.target.closest('.pin-btn')) {
+            const r = await fetch(`/api/notifications/${id}/pin`, { method: 'POST' });
+            if (r.ok) window.location.reload();
+        } else if (e.target.closest('.del-btn')) {
+            if (!confirm('Remove this notification from your dashboard?')) return;
+            const r = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+            if (r.ok) { card.remove(); showToast('Removed.', 'ok'); }
+        }
+    });
+
+    // ── Sort / filter ──
+    const list = document.getElementById('notif-list');
+    const sortSel = document.getElementById('sort-select');
+    const filterSel = document.getElementById('filter-select');
+    const countEl = document.getElementById('visible-count');
+    function applyView() {
+        if (!sortSel) return;
+        const cards = [...list.querySelectorAll('.notif-card')];
+        const by = sortSel.value, filt = filterSel.value;
+        cards.sort((a, b) => by === 'deadline'
+            ? (+a.dataset.days - +b.dataset.days)
+            : (+a.dataset.added - +b.dataset.added));
+        cards.forEach(c => list.appendChild(c));
+        let shown = 0;
+        cards.forEach(c => {
+            const s = c.dataset.status;
+            const ok = filt === 'all'
+                || (filt === 'open' && s === 'open')
+                || (filt === 'closing' && (s === 'soon' || s === 'today'))
+                || (filt === 'closed' && s === 'closed');
+            c.style.display = ok ? '' : 'none';
+            if (ok) shown++;
+        });
+        countEl.textContent = shown + ' shown';
+    }
+    if (sortSel) { sortSel.addEventListener('change', applyView); filterSel.addEventListener('change', applyView); applyView(); }
+
+    // ── Live countdown refinement on chips ──
+    document.querySelectorAll('[data-countdown]').forEach(chip => {
+        const days = Math.ceil((new Date(chip.dataset.countdown) - new Date()) / 86400000);
+        if (days > 7 || days < 0) return; // server label already fine
+    });
+
+    // ── Compare selection ──
+    const bar = document.getElementById('compare-bar');
+    const cmpCount = document.getElementById('cmp-count');
+    function refreshCompare() {
+        const sel = [...document.querySelectorAll('.cmp-check:checked')];
+        cmpCount.textContent = sel.length;
+        bar.classList.toggle('hidden', sel.length < 2);
+        if (sel.length > 3) sel[sel.length - 1].checked = false;
+    }
+    list.addEventListener('change', (e) => { if (e.target.classList.contains('cmp-check')) refreshCompare(); });
+    document.getElementById('compare-go').addEventListener('click', () => {
+        const ids = [...document.querySelectorAll('.cmp-check:checked')].map(c => c.closest('.notif-card').dataset.id);
+        if (ids.length >= 2) window.location.href = '/compare?ids=' + ids.slice(0, 3).join(',');
+    });
+})();
+</script>
+{% endblock %}
