@@ -95,6 +95,8 @@
             .no-print { display: none !important; }
             body { background: #fff !important; }
         }
+        .adsense-placement { margin: 1.25rem 0 1.5rem; min-height: 106px; text-align: center; }
+        .adsense-label { display: block; margin-bottom: .35rem; color: #94a3b8; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
     </style>
     {% block head_extra %}{% endblock %}
 </head>
@@ -168,6 +170,36 @@
     <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="no-print border-t border-slate-200 bg-white/70 mt-8">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            <p>© 2026 TrueNotice. Information service for job seekers.</p>
+            <nav class="flex flex-wrap justify-center gap-x-4 gap-y-2" aria-label="Trust and legal links">
+                <a class="hover:text-accent" href="{{ url_for('about') }}">About</a>
+                <a class="hover:text-accent" href="{{ url_for('contact') }}">Contact</a>
+                <a class="hover:text-accent" href="{{ url_for('privacy_policy') }}">Privacy</a>
+                <a class="hover:text-accent" href="{{ url_for('terms_of_service') }}">Terms</a>
+                <a class="hover:text-accent" href="{{ url_for('cookie_policy') }}">Cookies</a>
+            </nav>
+        </div>
+    </footer>
+
+    <!-- Consent notice: keep non-essential analytics/advertising behind consent. -->
+    <div id="cookie-consent" class="no-print hidden fixed inset-x-4 bottom-4 z-[70] sm:left-auto sm:right-5 sm:max-w-md">
+        <div class="rounded-2xl bg-slate-950 text-white shadow-2xl p-5 border border-white/10">
+            <div class="flex items-start gap-3">
+                <svg class="icon flex-shrink-0 text-blue-300 mt-0.5"><use href="#i-shield"/></svg>
+                <div>
+                    <h2 class="font-bold text-sm">Your privacy matters</h2>
+                    <p class="text-xs leading-5 text-slate-300 mt-1">We use necessary storage to run TrueNotice. Optional analytics and advertising cookies are used only with your permission. <a class="underline hover:text-white" href="{{ url_for('cookie_policy') }}">Learn more</a>.</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-4 justify-end">
+                <button type="button" onclick="setCookieConsent('declined')" class="px-3 py-2 rounded-lg border border-slate-600 text-xs font-semibold hover:bg-slate-800">Essential only</button>
+                <button type="button" onclick="setCookieConsent('accepted')" class="px-3 py-2 rounded-lg bg-blue-500 text-xs font-semibold hover:bg-blue-400">Accept optional</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ── Profile modal (shared) ── -->
     <div id="profile-modal" class="no-print hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
@@ -275,6 +307,33 @@
                     if (window.onProfileSaved) window.onProfileSaved(); }, 800);
             } catch (err) { showToast('Could not save profile. Please try again.'); }
         });
+
+        // Consent is intentionally local to this browser. Ad/analytics scripts should
+        // be inserted only inside the accepted branch in setCookieConsent().
+        function setCookieConsent(choice) {
+            localStorage.setItem('truenotice_cookie_consent', choice);
+            document.getElementById('cookie-consent').classList.add('hidden');
+            if (choice === 'accepted') {
+                loadAdsense();
+            }
+        }
+        function loadAdsense() {
+            if (window.__truenoticeAdsLoaded) return;
+            window.__truenoticeAdsLoaded = true;
+            const script = document.createElement('script');
+            script.async = true;
+            script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9140574176918803';
+            script.crossOrigin = 'anonymous';
+            script.onload = () => document.querySelectorAll('.adsbygoogle').forEach(() => {
+                try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (_) {}
+            });
+            document.head.appendChild(script);
+        }
+        const _cookieChoice = localStorage.getItem('truenotice_cookie_consent');
+        if (_cookieChoice === 'accepted') loadAdsense();
+        if (!_cookieChoice) {
+            document.getElementById('cookie-consent').classList.remove('hidden');
+        }
     </script>
     {% block scripts %}{% endblock %}
 </body>

@@ -252,9 +252,25 @@
         </div>
         <span>AI-assisted verification &middot; Always confirm against the official notification before applying.</span>
         <span>&copy; 2026 TrueNotice</span>
+        <nav style="display:flex;flex-wrap:wrap;gap:12px 16px;width:100%;justify-content:center;" aria-label="Trust and legal links">
+          <a href="{{ url_for('about') }}" style="color:#aebbd2;">About</a>
+          <a href="{{ url_for('contact') }}" style="color:#aebbd2;">Contact</a>
+          <a href="{{ url_for('privacy_policy') }}" style="color:#aebbd2;">Privacy</a>
+          <a href="{{ url_for('terms_of_service') }}" style="color:#aebbd2;">Terms</a>
+          <a href="{{ url_for('cookie_policy') }}" style="color:#aebbd2;">Cookies</a>
+        </nav>
       </div>
     </div>
   </section>
+</div>
+
+<div id="landing-cookie-consent" style="display:none;position:fixed;left:16px;right:16px;bottom:16px;z-index:20;max-width:440px;margin-left:auto;padding:18px;border-radius:16px;background:#080f20;color:#fff;box-shadow:0 16px 40px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);font-size:13px;line-height:1.55;">
+  <strong>Privacy choices</strong>
+  <p style="margin:5px 0 13px;color:#c3cfe4;">Necessary storage helps TrueNotice work. Optional analytics and advertising cookies need your permission. <a href="{{ url_for('cookie_policy') }}" style="color:#93c5fd;text-decoration:underline;">Learn more</a>.</p>
+  <div style="display:flex;justify-content:flex-end;gap:8px;">
+    <button type="button" onclick="landingCookieConsent('declined')" style="padding:8px 11px;border:1px solid #475569;border-radius:8px;background:transparent;color:#fff;cursor:pointer;">Essential only</button>
+    <button type="button" onclick="landingCookieConsent('accepted')" style="padding:8px 11px;border:0;border-radius:8px;background:#3b82f6;color:#fff;font-weight:700;cursor:pointer;">Accept optional</button>
+  </div>
 </div>
 
 <script>
@@ -275,6 +291,25 @@
   // Safety net: nothing stays invisible even if the observer never fires.
   setTimeout(revealAll, 2500);
 })();
+function landingCookieConsent(choice) {
+  localStorage.setItem('truenotice_cookie_consent', choice);
+  document.getElementById('landing-cookie-consent').style.display = 'none';
+  if (choice === 'accepted') loadLandingAdsense();
+}
+function loadLandingAdsense() {
+  if (window.__truenoticeAdsLoaded) return;
+  window.__truenoticeAdsLoaded = true;
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9140574176918803';
+  script.crossOrigin = 'anonymous';
+  document.head.appendChild(script);
+}
+const landingCookieChoice = localStorage.getItem('truenotice_cookie_consent');
+if (landingCookieChoice === 'accepted') loadLandingAdsense();
+if (!landingCookieChoice) {
+  document.getElementById('landing-cookie-consent').style.display = 'block';
+}
 </script>
 </body>
 </html>

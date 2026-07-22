@@ -1624,6 +1624,49 @@ def compare():
     return render_template("compare.html", notifs=notifs, profile=db.get_profile())
 
 
+# ---------------------------------------------------------------------------
+# Trust and legal pages
+# ---------------------------------------------------------------------------
+
+@app.context_processor
+def inject_site_contact():
+    """Expose the configured support address to pages and the shared footer."""
+    return {
+        "site_contact_email": os.getenv("CONTACT_EMAIL", "support@truenotice.app"),
+        "adsense_publisher": "ca-pub-9140574176918803",
+        "adsense_slots": {
+            "dashboard": os.getenv("ADSENSE_SLOT_DASHBOARD", ""),
+            "detail": os.getenv("ADSENSE_SLOT_DETAIL", ""),
+            "legal": os.getenv("ADSENSE_SLOT_LEGAL", ""),
+        },
+    }
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+
+@app.route("/privacy-policy")
+def privacy_policy():
+    return render_template("privacy-policy.html")
+
+
+@app.route("/terms-of-service")
+def terms_of_service():
+    return render_template("terms-of-service.html")
+
+
+@app.route("/cookie-policy")
+def cookie_policy():
+    return render_template("cookie-policy.html")
+
+
 @app.route("/notification/<notif_id>/print")
 def notification_print(notif_id):
     """Print / PDF-friendly view of a notification."""
@@ -1718,6 +1761,11 @@ def sitemap_xml():
     urls = [
         {"loc": base + "/", "changefreq": "weekly", "priority": "1.0", "lastmod": None},
         {"loc": base + "/dashboard", "changefreq": "daily", "priority": "0.9", "lastmod": None},
+        {"loc": base + "/about", "changefreq": "monthly", "priority": "0.5", "lastmod": None},
+        {"loc": base + "/contact", "changefreq": "monthly", "priority": "0.5", "lastmod": None},
+        {"loc": base + "/privacy-policy", "changefreq": "yearly", "priority": "0.3", "lastmod": None},
+        {"loc": base + "/terms-of-service", "changefreq": "yearly", "priority": "0.3", "lastmod": None},
+        {"loc": base + "/cookie-policy", "changefreq": "yearly", "priority": "0.3", "lastmod": None},
     ]
     for n in db.list_notifications():
         lastmod = (n.get("created_at") or "")[:10] or None

@@ -1,0 +1,9 @@
+{% if adsense_slots.get(ad_slot) %}
+<aside class="adsense-placement no-print" aria-label="Advertisement">
+    <span class="adsense-label">Advertisement</span>
+    <ins class="adsbygoogle" style="display:block;min-height:90px"
+         data-ad-client="{{ adsense_publisher }}"
+         data-ad-slot="{{ adsense_slots[ad_slot] }}"
+         data-ad-format="auto" data-full-width-responsive="true"></ins>
+</aside>
+{% endif %}

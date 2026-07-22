@@ -1,0 +1,8 @@
+{% extends "legal-page.html" %}
+{% set page_title = "Contact" %}
+{% set page_description = "Contact the TrueNotice team about corrections, privacy, or general questions." %}
+{% block legal_content %}
+<section><h2 class="text-xl font-bold text-slate-950 mb-2">Get in touch</h2><p>For corrections, broken official links, privacy requests, advertising questions, or general feedback, email us at <a class="text-accent font-semibold hover:underline" href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a>.</p></section>
+<section><h2 class="text-xl font-bold text-slate-950 mb-2">When reporting a job notification</h2><p>Please include the job title, the page URL, the official source URL, and a short description of the issue. Do not send passwords, identity documents, bank details, or other sensitive personal information.</p></section>
+<section><h2 class="text-xl font-bold text-slate-950 mb-2">Response time</h2><p>We review messages as soon as practical. A message to TrueNotice does not create an application, guarantee a correction, or establish a professional or legal relationship.</p></section>
+{% endblock %}

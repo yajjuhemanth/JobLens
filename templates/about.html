@@ -1,0 +1,8 @@
+{% extends "legal-page.html" %}
+{% set page_title = "About TrueNotice" %}
+{% set page_description = "Learn how TrueNotice helps job seekers find and understand verified job notifications." %}
+{% block legal_content %}
+<section><h2 class="text-xl font-bold text-slate-950 mb-2">What we do</h2><p>TrueNotice helps job seekers discover government and private job notifications in one place. We organize important details such as deadlines, vacancies, eligibility, pay, and application links so you can make better-informed decisions.</p></section>
+<section><h2 class="text-xl font-bold text-slate-950 mb-2">How verification works</h2><p>Our tools use publicly available sources and automated analysis to highlight information that may matter to applicants. Always open the official source and confirm the latest details before applying. TrueNotice is an information service, not a government agency, recruiter, or employer.</p></section>
+<section><h2 class="text-xl font-bold text-slate-950 mb-2">Our standard</h2><p>We aim to be clear about sources, dates, limitations, and uncertainty. If you find an error or an outdated link, please <a class="text-accent font-semibold hover:underline" href="{{ url_for('contact') }}">contact us</a>.</p></section>
+{% endblock %}

@@ -107,6 +107,9 @@
 </div>
 
 <!-- ── Trust / fact-check panel ── -->
+{% set ad_slot = 'detail' %}
+{% include '_ad.html' %}
+
 {% if d.fact_check_summary or d.discrepancies %}
 {% set has_disc = d.discrepancies and d.discrepancies|length > 0 %}
 <div class="rounded-xl border p-5 mb-5 {{ 'bg-amber-50/60 border-amber-200' if has_disc else 'bg-emerald-50/60 border-emerald-200' }}">
