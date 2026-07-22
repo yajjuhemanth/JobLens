@@ -25,12 +25,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    fontFamily: { sans: ['Public Sans', 'system-ui', 'sans-serif'] },
                     colors: {
                         accent:  { DEFAULT: '#1d4ed8', dark: '#1e40af', soft: '#eff4ff' },
                     },
@@ -69,6 +69,25 @@
         .fade-in { animation: fadeIn .35s ease-out both; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
+        /* Dashboard-redesign surface: cool paper with a faint corner wash */
+        body { background-color: #eef0f4;
+               background-image: radial-gradient(circle at 12% 0%, rgba(29,78,216,.05), transparent 42%); }
+
+        /* Card system — subtle depth with an inset top highlight, and a lift on hover */
+        .tn-card { background:#fff; border:1px solid #e5e8ee; border-radius:14px;
+                   box-shadow:0 1px 2px rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.06),inset 0 1px 0 rgba(255,255,255,.7); }
+        .tn-row { transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; }
+        .tn-row:hover { border-color:#d7dde6; transform:translateY(-1px);
+                        box-shadow:0 4px 6px -2px rgba(15,23,42,.05),0 14px 26px -8px rgba(15,23,42,.16),inset 0 1px 0 rgba(255,255,255,.8); }
+
+        /* Staggered row reveal + KPI pop (respect reduced-motion) */
+        @keyframes tnRowIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes tnPop { 0% { transform: translateY(10px) scale(.96); opacity: 0; } 100% { transform: none; opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) {
+            .fade-in, [data-reveal-row] { animation: none !important; }
+            [data-reveal-row] { opacity: 1 !important; }
+        }
+
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; border: 3px solid #f5f6f8; }
 
@@ -79,7 +98,7 @@
     </style>
     {% block head_extra %}{% endblock %}
 </head>
-<body class="min-h-screen bg-[#f5f6f8] text-slate-900 font-sans">
+<body class="min-h-screen text-slate-900 font-sans">
 
     <!-- ── SVG icon sprite (defs only) ── -->
     <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -109,22 +128,36 @@
             <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></symbol>
             <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-7-7 16-2-6-7-3z"/></symbol>
             <symbol id="i-compare" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M7 7L3 11l4 4M17 7l4 4-4 4"/></symbol>
+            <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></symbol>
         </defs>
     </svg>
 
+    <!-- ── Official / grounding strip ── -->
+    <div class="no-print bg-[#14213d] text-[#c7d0e0] text-[11.5px] font-medium tracking-[.02em]">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-1.5 flex items-center justify-between gap-3">
+            <span class="inline-flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                Verified against official sources
+            </span>
+            <span class="text-[#8b97b0]">Grounded by Groq&nbsp;+&nbsp;Tavily</span>
+        </div>
+    </div>
+
     <!-- ── Header ── -->
-    <header class="no-print sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-            <a href="/" class="flex items-center gap-2.5 group">
-                <span class="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center">
+    <header class="no-print sticky top-0 z-30 bg-white/[.88] backdrop-blur-md border-b border-[#e5e8ee] shadow-[0_1px_2px_rgba(15,23,42,.03)]">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 h-[60px] flex items-center justify-between">
+            <a href="/dashboard" class="flex items-center gap-2.5 group">
+                <span class="w-[34px] h-[34px] rounded-[9px] bg-gradient-to-br from-[#1e3a8a] to-[#14213d] text-white flex items-center justify-center shadow-[0_2px_4px_rgba(20,33,61,.28),inset_0_1px_0_rgba(255,255,255,.18)]">
                     <svg class="icon icon-sm"><use href="#i-logo"/></svg>
                 </span>
-                <span class="text-[17px] font-bold tracking-tight">TrueNotice</span>
-                <span class="hidden sm:inline text-xs font-medium text-slate-400 border-l border-slate-200 pl-2.5">Notification tracker</span>
+                <span class="flex flex-col leading-[1.05]">
+                    <span class="text-[17px] font-extrabold tracking-tight">TrueNotice</span>
+                    <span class="text-[10.5px] font-semibold text-slate-500 tracking-[.04em] uppercase">Notification Intelligence</span>
+                </span>
             </a>
             <div class="flex items-center gap-1.5">
-                <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Dashboard</a>
-                <button onclick="openProfile()" class="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors flex items-center gap-1.5">
+                <a href="/dashboard" class="px-3.5 py-1.5 rounded-lg text-[13.5px] font-semibold text-white bg-accent shadow-[0_1px_2px_rgba(29,78,216,.3)]">Dashboard</a>
+                <button onclick="openProfile()" class="px-3 py-1.5 rounded-lg text-[13.5px] font-semibold text-slate-600 hover:bg-slate-100 transition-colors flex items-center gap-1.5">
                     <svg class="icon icon-sm"><use href="#i-user"/></svg>
                     <span class="hidden sm:inline">Profile</span>
                 </button>

@@ -22,7 +22,7 @@
 {% endblock %}
 
 {% block content %}
-<a href="/" class="no-print inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-accent mb-4">
+<a href="/dashboard" class="no-print inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-accent mb-4">
     <svg class="icon icon-sm"><use href="#i-back"/></svg> Dashboard
 </a>
 
@@ -39,8 +39,25 @@
         {% endif %}
     </div>
     <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight leading-snug">{{ d.job_title }}</h1>
+
+    {# Organization / location / type — a compact, universal meta row (govt or private). #}
+    {% set metas = [
+        ('i-users', org_of(notif)),
+        ('i-pin', d.job_location),
+        ('i-clipboard', d.employment_type),
+        ('i-steps', d.work_mode),
+        ('i-cap', d.experience_required),
+    ] %}
+    {% if metas | selectattr('1') | list %}
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2 text-sm text-slate-600">
+        {% for icon, val in metas if val %}
+        <span class="inline-flex items-center gap-1.5"><svg class="icon icon-sm text-slate-400"><use href="#{{ icon }}"/></svg>{{ val }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {% if notif.source_url %}
-    <a href="{{ notif.source_url }}" target="_blank" rel="noopener noreferrer" class="no-print inline-flex items-center gap-1 text-xs text-slate-400 hover:text-accent mt-1.5 break-all">
+    <a href="{{ notif.source_url }}" target="_blank" rel="noopener noreferrer" class="no-print inline-flex items-center gap-1 text-xs text-slate-400 hover:text-accent mt-2 break-all">
         {{ notif.source_url }} <svg class="icon" style="width:.8rem;height:.8rem"><use href="#i-external"/></svg>
     </a>
     {% endif %}
@@ -134,13 +151,21 @@
     </div>
 </div>
 
+<!-- ── Useful links (apply, mock tests, syllabus, admit card, result, official site) ── -->
+{% if d.important_links and d.important_links|selectattr('url')|list %}
+<div class="no-print mb-5">{% call m.card('Links & resources', 'i-external') %}{{ m.links(d.important_links) }}{% endcall %}</div>
+{% endif %}
+
 <!-- ── Content sections ── -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     {% if d.dates and (d.dates.start_date or d.dates.last_date or d.dates.exam_date or d.dates.age_cutoff_date) %}
         {% call m.card('Important dates', 'i-calendar') %}{{ m.dates(d.dates) }}{% endcall %}
     {% endif %}
+    {% if d.key_skills %}
+        {% call m.card('Key skills', 'i-steps') %}{{ m.chips(d.key_skills) }}{% endcall %}
+    {% endif %}
     {% if d.pay_scale %}
-        {% call m.card('Pay scale', 'i-cash') %}{{ d.pay_scale|fmt }}{% endcall %}
+        {% call m.card('Pay scale', 'i-cash') %}{{ m.spec(d.pay_scale) }}{% endcall %}
     {% endif %}
     {% if d.vacancies and (d.vacancies.total or d.vacancies.breakdown) %}
         {% call m.card('Vacancies', 'i-users') %}{{ m.vacancy(d.vacancies) }}{% endcall %}
@@ -149,7 +174,7 @@
         {% call m.card('Application fees', 'i-card') %}{{ m.fees(d.fees) }}{% endcall %}
     {% endif %}
     {% if d.eligibility %}
-        <div class="lg:col-span-2">{% call m.card('Eligibility criteria', 'i-cap') %}{{ d.eligibility|fmt }}{% endcall %}</div>
+        <div class="lg:col-span-2">{% call m.card('Eligibility criteria', 'i-cap') %}{{ m.spec(d.eligibility) }}{% endcall %}</div>
     {% endif %}
     {% if d.selection_process %}
         <div class="lg:col-span-2">{% call m.card('Selection process', 'i-clipboard') %}{{ m.stages(d.selection_process) }}{% endcall %}</div>
@@ -164,7 +189,7 @@
         {% call m.card('Study resources', 'i-book') %}{{ m.bullets(d.study_resources) }}{% endcall %}
     {% endif %}
     {% if d.helpdesk_info %}
-        <div class="lg:col-span-2">{% call m.card('Helpdesk', 'i-phone') %}{{ d.helpdesk_info|fmt }}{% endcall %}</div>
+        <div class="lg:col-span-2">{% call m.card('Helpdesk', 'i-phone') %}{{ m.spec(d.helpdesk_info) }}{% endcall %}</div>
     {% endif %}
 </div>
 

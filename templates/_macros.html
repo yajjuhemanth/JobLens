@@ -62,8 +62,8 @@
 {% endfor %}
 </div>
 {% endif %}
-{% if f.payment_mode %}<p class="text-xs text-slate-500 mb-1"><span class="font-semibold text-slate-600">Payment:</span> {{ f.payment_mode }}</p>{% endif %}
-{% if f.notes %}<div class="text-sm">{{ f.notes|fmt }}</div>{% endif %}
+{% if f.payment_mode %}<p class="text-xs text-slate-500 mb-2"><span class="font-semibold text-slate-600">Payment:</span> {{ f.payment_mode }}</p>{% endif %}
+{% if f.notes %}<div class="text-sm">{{ spec(f.notes) }}</div>{% endif %}
 {% endmacro %}
 
 
@@ -91,6 +91,73 @@
     </li>
 {% endfor %}
 </ol>
+{% endmacro %}
+
+
+{% macro spec(text) %}
+{# Neat, scannable rendering of a dense freeform 'spec' string (pay scale,
+   eligibility, fees notes, helpdesk). Parsed server-side by the `spec` filter
+   into labelled sections; falls back to plain prose when there's no structure. #}
+{% set blocks = text | spec %}
+{% if blocks | length == 1 and not blocks[0].label and blocks[0]['items'] | length <= 1 %}
+    {# Genuinely a single sentence — keep it as clean prose. #}
+    <p>{{ blocks[0]['items'][0] if blocks[0]['items'] else text }}</p>
+{% else %}
+<div class="space-y-3">
+{% for b in blocks %}
+    <div>
+        {% if b.label %}<div class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">{{ b.label }}</div>{% endif %}
+        {% if b['items'] | length == 1 and b.label %}
+            <p class="text-sm text-slate-700 leading-relaxed">{{ b['items'][0] }}</p>
+        {% else %}
+            <ul class="space-y-1.5">
+            {% for it in b['items'] %}
+                <li class="flex items-start gap-2 text-sm text-slate-700 leading-relaxed">
+                    <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0"></span>
+                    <span>{{ it }}</span>
+                </li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+{% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{% macro links(items) %}
+{# Useful links (apply / mock test / syllabus / admit card / result / official site). #}
+{% set icons = {
+    'apply':'i-external', 'notification':'i-doc', 'mock_test':'i-clipboard',
+    'syllabus':'i-book', 'previous_papers':'i-doc', 'admit_card':'i-card',
+    'result':'i-check', 'official_site':'i-external', 'other':'i-external'
+} %}
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+{% for l in items if l.url %}
+    <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer"
+       class="group flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-accent hover:bg-accent-soft transition-colors">
+        <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-accent flex items-center justify-center flex-shrink-0 transition-colors">
+            <svg class="icon icon-sm"><use href="#{{ icons.get(l.category, 'i-external') }}"/></svg>
+        </span>
+        <span class="min-w-0 flex-1">
+            <span class="block text-sm font-semibold text-slate-800 group-hover:text-accent truncate">{{ l.label or 'Open link' }}</span>
+            <span class="block text-xs text-slate-400 truncate">{{ l.url }}</span>
+        </span>
+        <svg class="icon icon-sm text-slate-300 group-hover:text-accent flex-shrink-0"><use href="#i-external"/></svg>
+    </a>
+{% endfor %}
+</div>
+{% endmacro %}
+
+
+{% macro chips(items) %}
+{# Small neutral pills for key skills / tags. #}
+<div class="flex flex-wrap gap-1.5">
+{% for item in items if item %}
+    <span class="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">{{ item }}</span>
+{% endfor %}
+</div>
 {% endmacro %}
 
 

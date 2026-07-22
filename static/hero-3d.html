@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrueNotice hero</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.184.0/build/three.module.js"
+  },
+  "integrity": {
+    "https://unpkg.com/three@0.184.0/build/three.module.js": "sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J",
+    "https://unpkg.com/three@0.184.0/build/three.core.js": "sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT"
+  }
+}
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #c { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+camera.position.set(0, 0.02, 0.98);
+camera.lookAt(0, 0, 0);
+
+// Lighting — neutral studio + a cool rim to read on dark bg
+scene.add(new THREE.HemisphereLight(0xdfe7f5, 0x0b1220, 1.05));
+const key = new THREE.DirectionalLight(0xffffff, 1.7);
+key.position.set(0.6, 0.9, 1.2); key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024); key.shadow.camera.near = 0.1; key.shadow.camera.far = 5;
+key.shadow.radius = 6; scene.add(key);
+const rim = new THREE.DirectionalLight(0x7dd3fc, 1.2); rim.position.set(-1.1, 0.3, -0.6); scene.add(rim);
+const fill = new THREE.DirectionalLight(0x99b8ff, 0.5); fill.position.set(-0.5, -0.6, 0.8); scene.add(fill);
+const beamGlow = new THREE.PointLight(0x38bdf8, 0.8, 1.2, 2); scene.add(beamGlow);
+
+// ── Materials ──
+const matPaper  = new THREE.MeshStandardMaterial({ color: 0xf6f7fa, roughness: 0.82, metalness: 0.0 });
+const matAccent = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.45, metalness: 0.15 });
+const matInk    = new THREE.MeshStandardMaterial({ color: 0x2b3648, roughness: 0.7 });
+const matInkSoft= new THREE.MeshStandardMaterial({ color: 0x9aa6b8, roughness: 0.8 });
+const matBrass  = new THREE.MeshStandardMaterial({ color: 0xe4c26a, roughness: 0.3, metalness: 0.45 });
+const matScan   = new THREE.MeshStandardMaterial({ color: 0x0a3648, roughness: 0.4, emissive: 0x38bdf8, emissiveIntensity: 1.8, transparent: true, opacity: 0.5 });
+const matRail   = new THREE.MeshStandardMaterial({ color: 0x0a3648, roughness: 0.4, emissive: 0x7dd3fc, emissiveIntensity: 2.6 });
+
+function roundedRect(w, h, r) {
+  const s = new THREE.Shape(); const x = -w/2, y = -h/2;
+  s.moveTo(x+r,y); s.lineTo(x+w-r,y); s.quadraticCurveTo(x+w,y,x+w,y+r);
+  s.lineTo(x+w,y+h-r); s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  s.lineTo(x+r,y+h); s.quadraticCurveTo(x,y+h,x,y+h-r);
+  s.lineTo(x,y+r); s.quadraticCurveTo(x,y,x+r,y); return s;
+}
+
+const doc = new THREE.Group();
+const W = 0.30, H = 0.42, depth = 0.011;
+const sheetGeo = new THREE.ExtrudeGeometry(roundedRect(W, H, 0.014), { depth, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.003, bevelSegments: 2, curveSegments: 16 });
+sheetGeo.translate(0, 0, -depth/2);
+const sheet = new THREE.Mesh(sheetGeo, matPaper); sheet.castShadow = true; sheet.receiveShadow = true; doc.add(sheet);
+
+const frontZ = depth/2 + 0.003;
+function plate(w, h, mat, x, y, d = 0.004) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, frontZ + d/2 - 0.001); m.castShadow = true; doc.add(m); return m;
+}
+plate(W-0.05, 0.052, matAccent, 0, H/2-0.055, 0.006);
+plate(0.03, 0.03, matPaper, -(W-0.05)/2+0.03, H/2-0.055, 0.009);
+plate(0.20, 0.016, matInk, -0.03, H/2-0.115);
+plate(0.13, 0.012, matInkSoft, -0.065, H/2-0.142);
+[0.235,0.235,0.19,0.235,0.155].forEach((w,i) => plate(w, 0.009, matInkSoft, -(W-0.05)/2+w/2+0.001, 0.055-i*0.028));
+const pat=[[1,0,1,1],[0,1,1,0],[1,1,0,1],[1,0,1,0]]; const cell=0.011;
+pat.forEach((row,r)=>row.forEach((v,c)=>{ if(!v)return; const b=new THREE.Mesh(new THREE.BoxGeometry(cell,cell,0.004),matInk); b.position.set(-0.10+c*cell,-0.115-r*cell,frontZ+0.001); doc.add(b); }));
+const seal=new THREE.Group(); seal.position.set(0.085,-0.125,frontZ+0.004);
+seal.add(new THREE.Mesh(new THREE.TorusGeometry(0.036,0.006,20,48),matBrass));
+const a1=new THREE.Mesh(new THREE.BoxGeometry(0.007,0.020,0.007),matBrass); a1.position.set(-0.011,-0.006,0.004); a1.rotation.z=Math.PI/4; seal.add(a1);
+const a2=new THREE.Mesh(new THREE.BoxGeometry(0.007,0.036,0.007),matBrass); a2.position.set(0.008,0.004,0.004); a2.rotation.z=-Math.PI/5; seal.add(a2);
+doc.add(seal);
+
+const beam = new THREE.Mesh(new THREE.BoxGeometry(W+0.09, 0.014, 0.04), matScan);
+beam.position.z = frontZ + 0.022; doc.add(beam);
+const railT = new THREE.Mesh(new THREE.BoxGeometry(W+0.09,0.003,0.042),matRail); railT.position.z=frontZ+0.022; doc.add(railT);
+const railB = railT.clone(); doc.add(railB);
+
+doc.rotation.set(-0.04, -0.32, 0);
+scene.add(doc);
+
+// pointer parallax
+let px = 0, py = 0, tx = 0, ty = 0;
+addEventListener('pointermove', (e) => { px = (e.clientX/innerWidth-0.5); py=(e.clientY/innerHeight-0.5); });
+
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const clock = new THREE.Clock();
+function frame() {
+  const t = clock.getElapsedTime();
+  if (!reduce) {
+    doc.position.y = Math.sin(t*0.8)*0.012;
+    doc.rotation.y = -0.32 + Math.sin(t*0.35)*0.18;
+    tx += (px*0.35 - tx)*0.05; ty += (py*0.25 - ty)*0.05;
+    doc.rotation.x = -0.04 + ty; doc.rotation.y += tx;
+    // scan sweep
+    const sweep = (Math.sin(t*0.9)*0.5+0.5);          // 0..1
+    const yTop = H/2-0.03, yBot = -H/2+0.03;
+    const by = yBot + (yTop-yBot)*sweep;
+    beam.position.y = by; railT.position.y = by+0.008; railB.position.y = by-0.008;
+    beamGlow.position.set(0, by, frontZ+0.12);
+    const pulse = 1.6 + Math.sin(t*4)*0.5; matScan.emissiveIntensity = pulse;
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

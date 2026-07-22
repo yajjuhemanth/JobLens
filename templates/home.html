@@ -3,109 +3,156 @@
 {% block meta_description %}Track deadlines, fact-check details, and check your eligibility for government & private job notifications — all AI-verified against official sources.{% endblock %}
 
 {% block content %}
-<!-- ── Page heading ── -->
-<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6">
+{# Status-style lookup mirrors status_of() in app.py so chips/dots match the design exactly. #}
+{% set STATUS = {
+    'open':    {'dot':'#059669','bg':'#ecfdf5','fg':'#047857'},
+    'soon':    {'dot':'#d97706','bg':'#fffbeb','fg':'#b45309'},
+    'today':   {'dot':'#ea580c','bg':'#fff7ed','fg':'#c2410c'},
+    'closed':  {'dot':'#94a3b8','bg':'#eef1f5','fg':'#475569'},
+    'unknown': {'dot':'#94a3b8','bg':'#eef1f5','fg':'#475569'}
+} %}
+
+<!-- ── Title block ── -->
+<div class="flex flex-wrap items-end justify-between gap-3.5 mb-6">
     <div>
-        <h1 class="text-2xl font-extrabold tracking-tight">Your notifications</h1>
-        <p class="text-sm text-slate-500 mt-1">Track deadlines, verify details, and check eligibility — all in one place.</p>
+        <h1 class="text-[29px] font-extrabold tracking-tight leading-none">Your notifications</h1>
+        <p class="text-sm text-slate-600 mt-1.5">Track deadlines, verify details against official sources, and check eligibility — in one register.</p>
     </div>
+    {% if notifications %}
+    <div class="text-right text-xs text-slate-500 leading-normal">
+        <div class="font-bold text-slate-700">Last updated {{ meta.last_updated }}</div>
+        <div class="tnum">{{ meta.active }} active · {{ meta.closing_this_week }} closing this week</div>
+    </div>
+    {% endif %}
 </div>
 
 <!-- ── KPI strip ── -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-7">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5 mb-5">
     {% set tiles = [
-        ('Tracked', kpis.tracked, 'i-clipboard', 'text-slate-700'),
-        ('Closing ≤7 days', kpis.closing_soon, 'i-calendar', 'text-amber-600'),
-        ('Eligible for you', kpis.eligible, 'i-check', 'text-emerald-600'),
-        ('Vacancies tracked', kpis.total_vacancies, 'i-users', 'text-accent'),
+        ('Tracked', kpis.tracked, 'i-clipboard', '#334155', '#eef1f5',
+            ('+' ~ kpis.added_this_week ~ ' new' if kpis.added_this_week else ''), '#059669', false),
+        ('Closing ≤ 7 days', kpis.closing_soon, 'i-calendar', '#b45309', '#fffbeb',
+            ('urgent' if kpis.closing_soon else ''), '#d97706', false),
+        ('Eligible for you', kpis.eligible, 'i-check', '#047857', '#ecfdf5',
+            ('of ' ~ kpis.eligibility_checked ~ ' checked' if kpis.eligibility_checked else ''), '#94a3b8', false),
+        ('Vacancies tracked', kpis.total_vacancies, 'i-users', '#1e3a8a', '#eff4ff', '', '#94a3b8', true),
     ] %}
-    {% for label, value, icon, color in tiles %}
-    <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="flex items-center gap-2 text-slate-400 mb-2">
-            <svg class="icon icon-sm {{ color }}"><use href="#{{ icon }}"/></svg>
+    {% for label, value, icon, ink, wrap, delta, delta_color, comma in tiles %}
+    <div class="tn-card p-4">
+        <div class="flex items-center gap-2 mb-3">
+            <span class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:{{ wrap }};color:{{ ink }};">
+                <svg class="icon icon-sm"><use href="#{{ icon }}"/></svg>
+            </span>
             <span class="text-xs font-semibold text-slate-500">{{ label }}</span>
         </div>
-        <p class="text-2xl font-extrabold tnum {{ color }}">{{ '{:,}'.format(value) }}</p>
+        <div class="flex items-end gap-2">
+            <span class="text-[28px] font-extrabold tnum leading-none tabular"
+                  style="color:{{ ink }};letter-spacing:-.02em;"
+                  data-count-to="{{ value }}" {% if comma %}data-count-comma="1"{% endif %}>0</span>
+            {% if delta %}<span class="tnum text-[11.5px] font-bold pb-[5px]" style="color:{{ delta_color }};">{{ delta }}</span>{% endif %}
+        </div>
     </div>
     {% endfor %}
 </div>
 
 <!-- ── Add new notification ── -->
-<div class="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 mb-8">
+<div class="tn-card p-4 sm:p-[18px] px-5 mb-6">
     <div class="flex items-center gap-2 mb-3">
         <svg class="icon icon-sm text-accent"><use href="#i-plus"/></svg>
         <h2 class="text-sm font-bold">Analyze a new notification</h2>
     </div>
     <div class="flex flex-col md:flex-row gap-3">
-        <input id="url-input" type="url" placeholder="Paste notification URL (e.g. ssc.nic.in/notice/…)"
-               class="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent">
-        <label id="pdf-dropzone" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-slate-300 text-sm text-slate-500 cursor-pointer hover:border-accent hover:text-accent transition-colors md:w-56">
+        <div class="flex-1 min-w-0 relative">
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                <svg class="icon icon-sm"><use href="#i-search"/></svg>
+            </span>
+            <input id="url-input" type="url" placeholder="Paste notification URL (e.g. ssc.nic.in/notice/…)"
+                   class="w-full pl-[38px] pr-3.5 py-2.5 rounded-lg border border-slate-300 text-sm shadow-[inset_0_1px_2px_rgba(15,23,42,.04)] focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent">
+        </div>
+        <label id="pdf-dropzone" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-slate-300 bg-[#fbfcfe] text-sm text-slate-500 cursor-pointer hover:border-accent hover:text-accent transition-colors md:w-52">
             <svg class="icon icon-sm"><use href="#i-upload"/></svg>
             <span id="pdf-label">Upload PDF</span>
             <input type="file" id="pdf-input" accept=".pdf" class="hidden">
         </label>
-        <button id="analyze-btn" class="px-5 py-2.5 rounded-lg bg-accent hover:bg-accent-dark text-white text-sm font-semibold transition-colors">
+        <button id="analyze-btn" class="px-5 py-2.5 rounded-lg bg-accent hover:bg-accent-dark text-white text-sm font-bold transition-colors shadow-[0_1px_2px_rgba(29,78,216,.35),0_4px_10px_-3px_rgba(29,78,216,.4),inset_0_1px_0_rgba(255,255,255,.18)]">
             Analyze
         </button>
     </div>
-    <p class="text-xs text-slate-400 mt-2">AI fetches, fact-checks against official sources, and files it here. Takes ~20–40s.</p>
+    <p class="text-xs text-slate-500 mt-3">AI fetches, fact-checks against official sources, and files it here. Typically 20–40&nbsp;seconds.</p>
 </div>
 
-<!-- ── Toolbar ── -->
+<!-- ── Register header + toolbar ── -->
 {% if notifications %}
-<div class="flex flex-wrap items-center gap-2 mb-3">
-    <span class="text-xs font-semibold text-slate-500 mr-1">Sort</span>
-    <select id="sort-select" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent/40">
-        <option value="deadline">Deadline (soonest)</option>
-        <option value="added">Recently added</option>
-    </select>
-    <span class="text-xs font-semibold text-slate-500 ml-2 mr-1">Show</span>
-    <select id="filter-select" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent/40">
-        <option value="all">All</option>
-        <option value="open">Open</option>
-        <option value="closing">Closing soon</option>
-        <option value="closed">Closed</option>
-    </select>
-    <span class="text-xs text-slate-400 ml-auto" id="visible-count"></span>
+<div class="flex flex-wrap items-center justify-between gap-3 mb-3.5 pb-3 border-b border-slate-200/80">
+    <div class="flex items-center gap-2.5">
+        <h2 class="text-sm font-bold text-slate-700">Tracked notifications</h2>
+        <span id="visible-count" class="text-[11px] font-bold text-slate-500 tnum bg-white border border-slate-200 rounded-full px-2 py-0.5"></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs font-bold text-slate-500">Sort</span>
+        <select id="sort-select" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,.03)] focus:outline-none focus:ring-2 focus:ring-accent/40 cursor-pointer">
+            <option value="deadline">Deadline (soonest)</option>
+            <option value="added">Recently added</option>
+            <option value="vacancies">Most vacancies</option>
+        </select>
+        <span class="text-xs font-bold text-slate-500 ml-1">Show</span>
+        <select id="filter-select" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,.03)] focus:outline-none focus:ring-2 focus:ring-accent/40 cursor-pointer">
+            <option value="all">All statuses</option>
+            <option value="open">Open</option>
+            <option value="closing">Closing soon</option>
+            <option value="closed">Closed</option>
+        </select>
+    </div>
 </div>
 {% endif %}
 
 <!-- ── Notification list ── -->
-<div id="notif-list" class="space-y-3">
+<div id="notif-list" class="flex flex-col gap-2.5">
     {% for n in notifications %}
     {% set st = status_of(n.last_date) %}
+    {% set sty = STATUS[st.key] %}
     {% set vac = (n.data.vacancies.total if n.data.vacancies else None) %}
-    <div class="notif-card bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all p-4 flex items-start gap-3"
+    {% set org = org_of(n) %}
+    {% set rowmeta = [org, n.data.job_location, n.data.employment_type] | select | join(' · ') %}
+    <div class="notif-card tn-card tn-row p-4 sm:p-[17px] flex items-start gap-3"
+         data-reveal-row
+         style="animation:tnRowIn .45s cubic-bezier(0,0,0,1) both;animation-delay:{{ [loop.index0, 10]|min * 45 }}ms;"
          data-id="{{ n.id }}"
          data-status="{{ st.key }}"
          data-days="{{ st.days if st.days is not none else 999999 }}"
          data-added="{{ loop.index0 }}"
+         data-vac="{{ vac_int(n) }}"
          data-title="{{ n.job_title|e }}">
-        <input type="checkbox" class="cmp-check mt-1 w-4 h-4 accent-[color:var(--accent)] cursor-pointer" title="Select to compare">
+        <button class="cmp-check w-5 h-5 rounded-md flex-shrink-0 mt-0.5 flex items-center justify-center border-[1.5px] border-slate-300 bg-white text-white transition-all cursor-pointer" title="Select to compare" aria-pressed="false">
+            <svg class="icon icon-sm opacity-0"><use href="#i-check"/></svg>
+        </button>
+        <span class="w-[9px] h-[9px] rounded-full flex-shrink-0 mt-[7px]" style="background:{{ sty.dot }};box-shadow:0 0 0 3px {{ sty.bg }};"></span>
         <div class="flex-1 min-w-0">
-            <div class="flex items-start justify-between gap-3">
-                <a href="/notification/{{ n.id }}" class="font-semibold text-slate-900 hover:text-accent transition-colors leading-snug line-clamp-2">
+            <div class="flex items-start gap-2.5">
+                <a href="/notification/{{ n.id }}" class="text-[15px] font-bold text-slate-900 hover:text-accent transition-colors leading-snug tracking-[-.01em] line-clamp-2">
                     {{ n.job_title }}
                 </a>
-                {% if n.pinned %}<svg class="icon icon-sm text-accent flex-shrink-0" title="On watchlist"><use href="#i-pin"/></svg>{% endif %}
+                {% if n.pinned %}<svg class="icon icon-sm text-accent flex-shrink-0 mt-0.5" title="On watchlist"><use href="#i-pin"/></svg>{% endif %}
             </div>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-xs text-slate-500">
-                <span class="chip chip-{{ st.key }}" {% if st.iso %}data-countdown="{{ st.iso }}"{% endif %}>{{ st.label }}</span>
-                {% if n.last_date %}<span class="tnum">Last date: <span class="font-medium text-slate-700">{{ n.last_date }}</span></span>{% endif %}
-                {% if vac %}<span class="tnum">{{ vac }} vacancies</span>{% endif %}
+            {% if rowmeta %}<div class="text-[12.5px] text-slate-500 mt-0.5 font-medium truncate">{{ rowmeta }}</div>{% endif %}
+            <div class="flex flex-wrap items-center gap-x-3.5 gap-y-2 mt-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-bold whitespace-nowrap"
+                      style="background:{{ sty.bg }};color:{{ sty.fg }};" {% if st.iso %}data-countdown="{{ st.iso }}"{% endif %}>{{ st.label }}</span>
+                {% if n.last_date %}<span class="tnum text-[12.5px] text-slate-600">Last date <span class="font-bold text-slate-800">{{ n.last_date }}</span></span>{% endif %}
+                {% if vac %}<span class="tnum text-[12.5px] text-slate-600"><span class="font-bold text-slate-800">{{ vac }}</span> vacancies</span>{% endif %}
                 {% set elig = n.eligibility %}
                 {% if elig %}
-                    {% if elig.verdict == 'eligible' %}<span class="chip chip-open">✓ Eligible</span>
-                    {% elif elig.verdict == 'not_eligible' %}<span class="chip chip-closed">Not eligible</span>
-                    {% else %}<span class="chip chip-soon">Eligibility unclear</span>{% endif %}
+                    {% if elig.verdict == 'eligible' %}<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-bold" style="background:#ecfdf5;color:#047857;">✓ Eligible</span>
+                    {% elif elig.verdict == 'not_eligible' %}<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-bold" style="background:#eef1f5;color:#475569;">Not eligible</span>
+                    {% else %}<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-bold" style="background:#fffbeb;color:#b45309;">Eligibility unclear</span>{% endif %}
                 {% endif %}
             </div>
         </div>
-        <div class="flex items-center gap-1 flex-shrink-0">
-            <button class="pin-btn p-1.5 rounded-lg hover:bg-slate-100 {{ 'text-accent' if n.pinned else 'text-slate-400' }}" title="Watchlist">
+        <div class="flex items-center gap-0.5 flex-shrink-0">
+            <button class="pin-btn w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center {{ 'text-accent' if n.pinned else 'text-slate-400' }}" title="Watchlist">
                 <svg class="icon icon-sm"><use href="#i-pin"/></svg>
             </button>
-            <button class="del-btn p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600" title="Delete">
+            <button class="del-btn w-8 h-8 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 flex items-center justify-center" title="Remove">
                 <svg class="icon icon-sm"><use href="#i-trash"/></svg>
             </button>
         </div>
@@ -115,20 +162,20 @@
 
 <!-- ── Empty state ── -->
 {% if not notifications %}
-<div class="bg-white rounded-xl border border-dashed border-slate-300 p-10 text-center">
+<div class="tn-card border-dashed border-slate-300 p-10 text-center">
     <div class="w-12 h-12 mx-auto rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
         <svg class="icon"><use href="#i-clipboard"/></svg>
     </div>
-    <h3 class="font-semibold text-slate-700">No notifications yet</h3>
+    <h3 class="font-bold text-slate-700">No notifications yet</h3>
     <p class="text-sm text-slate-500 mt-1">Paste a job-notification URL or upload a PDF above to get started.</p>
 </div>
 {% endif %}
 
 <!-- ── Compare bar ── -->
-<div id="compare-bar" class="no-print hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40">
-    <div class="bg-slate-900 text-white rounded-full shadow-lg pl-5 pr-2 py-2 flex items-center gap-3 fade-in">
-        <span class="text-sm font-medium"><span id="cmp-count">0</span> selected</span>
-        <button id="compare-go" class="px-4 py-1.5 rounded-full bg-accent hover:bg-accent-dark text-sm font-semibold flex items-center gap-1.5">
+<div id="compare-bar" class="no-print hidden fixed bottom-[22px] left-1/2 -translate-x-1/2 z-40">
+    <div class="bg-[#14213d] text-white rounded-full shadow-[0_8px_24px_-6px_rgba(15,23,42,.45),0_2px_6px_rgba(15,23,42,.3),inset_0_1px_0_rgba(255,255,255,.1)] pl-5 pr-2.5 py-2.5 flex items-center gap-3.5 fade-in">
+        <span class="text-[13.5px] font-semibold"><span id="cmp-count" class="tnum">0</span> selected</span>
+        <button id="compare-go" class="px-4.5 py-2 rounded-full bg-accent hover:bg-accent-dark text-[13.5px] font-bold flex items-center gap-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,.2)]">
             <svg class="icon icon-sm"><use href="#i-compare"/></svg> Compare
         </button>
     </div>
@@ -137,7 +184,7 @@
 <!-- ── Loading overlay ── -->
 <div id="loading" class="no-print hidden fixed inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm px-6">
     <div class="text-center max-w-sm w-full">
-        <div class="w-14 h-14 mx-auto rounded-2xl bg-accent text-white flex items-center justify-center mb-5">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-[#14213d] text-white flex items-center justify-center mb-5 shadow-[0_10px_30px_-8px_rgba(20,33,61,.5)]">
             <svg class="icon" style="width:1.75rem;height:1.75rem"><use href="#i-shield"/></svg>
         </div>
         <h2 class="text-lg font-bold mb-5">Analyzing notification</h2>
@@ -165,6 +212,25 @@
     const analyzeBtn = document.getElementById('analyze-btn');
     const loading = document.getElementById('loading');
     let selectedFile = null;
+
+    // ── KPI count-up (respects reduced motion) ──
+    (function countUp() {
+        const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const els = [...document.querySelectorAll('[data-count-to]')];
+        const fmt = (n, comma) => comma ? n.toLocaleString('en-IN') : String(n);
+        els.forEach(el => {
+            const target = parseInt(el.dataset.countTo, 10) || 0;
+            const comma = el.dataset.countComma === '1';
+            if (reduce || target === 0) { el.textContent = fmt(target, comma); return; }
+            const dur = 900, start = performance.now();
+            (function tick(t) {
+                const p = Math.min(1, (t - start) / dur);
+                const eased = 1 - Math.pow(1 - p, 3);
+                el.textContent = fmt(Math.round(target * eased), comma);
+                if (p < 1) requestAnimationFrame(tick);
+            })(start);
+        });
+    })();
 
     // ── Input handling ──
     pdfInput.addEventListener('change', (e) => {
@@ -242,9 +308,11 @@
         if (!sortSel) return;
         const cards = [...list.querySelectorAll('.notif-card')];
         const by = sortSel.value, filt = filterSel.value;
-        cards.sort((a, b) => by === 'deadline'
-            ? (+a.dataset.days - +b.dataset.days)
-            : (+a.dataset.added - +b.dataset.added));
+        cards.sort((a, b) => {
+            if (by === 'deadline') return (+a.dataset.days - +b.dataset.days);
+            if (by === 'vacancies') return (+b.dataset.vac - +a.dataset.vac);
+            return (+a.dataset.added - +b.dataset.added);
+        });
         cards.forEach(c => list.appendChild(c));
         let shown = 0;
         cards.forEach(c => {
@@ -260,24 +328,32 @@
     }
     if (sortSel) { sortSel.addEventListener('change', applyView); filterSel.addEventListener('change', applyView); applyView(); }
 
-    // ── Live countdown refinement on chips ──
-    document.querySelectorAll('[data-countdown]').forEach(chip => {
-        const days = Math.ceil((new Date(chip.dataset.countdown) - new Date()) / 86400000);
-        if (days > 7 || days < 0) return; // server label already fine
-    });
-
     // ── Compare selection ──
     const bar = document.getElementById('compare-bar');
     const cmpCount = document.getElementById('cmp-count');
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#1d4ed8';
+    function paintCheck(btn, on) {
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.style.background = on ? accent : '#fff';
+        btn.style.borderColor = on ? accent : '#cbd3de';
+        btn.querySelector('svg').style.opacity = on ? '1' : '0';
+    }
     function refreshCompare() {
-        const sel = [...document.querySelectorAll('.cmp-check:checked')];
+        const sel = [...document.querySelectorAll('.cmp-check[aria-pressed="true"]')];
         cmpCount.textContent = sel.length;
         bar.classList.toggle('hidden', sel.length < 2);
-        if (sel.length > 3) sel[sel.length - 1].checked = false;
     }
-    list.addEventListener('change', (e) => { if (e.target.classList.contains('cmp-check')) refreshCompare(); });
+    list.addEventListener('click', (e) => {
+        const btn = e.target.closest('.cmp-check');
+        if (!btn) return;
+        const on = btn.getAttribute('aria-pressed') === 'true';
+        const selCount = document.querySelectorAll('.cmp-check[aria-pressed="true"]').length;
+        if (!on && selCount >= 3) { showToast('Compare up to 3 at a time.'); return; }
+        paintCheck(btn, !on);
+        refreshCompare();
+    });
     document.getElementById('compare-go').addEventListener('click', () => {
-        const ids = [...document.querySelectorAll('.cmp-check:checked')].map(c => c.closest('.notif-card').dataset.id);
+        const ids = [...document.querySelectorAll('.cmp-check[aria-pressed="true"]')].map(c => c.closest('.notif-card').dataset.id);
         if (ids.length >= 2) window.location.href = '/compare?ids=' + ids.slice(0, 3).join(',');
     });
 })();
