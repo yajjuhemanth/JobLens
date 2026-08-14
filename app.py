@@ -174,8 +174,9 @@ class JobDetails(BaseModel):
     government, PSU, private company, campus, or internship — extracted and
     fact-checked by Groq.
     """
-    job_title: str = Field(
-        ..., description="Full title of the recruitment / job position"
+    job_title: Optional[str] = Field(
+        None,
+        description="Full title of the recruitment / job position. Null only when no title can be recovered.",
     )
     organization: Optional[str] = Field(
         None,
@@ -810,7 +811,9 @@ Rules:
 - CRITICAL — never invent, guess, or round a value. Only emit a fact that is
   explicitly present in the verified analysis below. If a field is not stated,
   set it to null (or an empty list) rather than filling a plausible-looking value.
-- For job_title, use the exact recruitment title. For organization, give the full
+- For job_title, use the exact recruitment title. If the exact title is unavailable,
+  use the most specific named exam/recruitment title in the verified analysis; never
+  return null merely because the notification is an exam or has no job post. For organization, give the full
   name of the recruiting body / employer / company as written (e.g. "Staff Selection
   Commission" or "Infosys Limited", not an abbreviation or the website domain). Null if never named.
 - Populate job_location, employment_type, work_mode, experience_required and key_skills
@@ -865,6 +868,10 @@ Rules:
 
     parsed = JobDetails.model_validate_json(raw)
     result = parsed.model_dump()
+    # SQLite keeps job_title non-null and the UI needs a stable heading. The model
+    # is allowed to return null when the source truly contains no recoverable title,
+    # so normalize that case at the application boundary.
+    result["job_title"] = (result.get("job_title") or "").strip() or "Job Notification"
     # Carry the Step-1 verified analysis so it can ground later chat /
     # eligibility checks without re-fetching. The caller strips this key
     # before it is stored inside data_json.
