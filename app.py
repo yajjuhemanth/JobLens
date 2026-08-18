@@ -1761,13 +1761,21 @@ def inject_site_contact():
     return {
         "current_user": user,
         "site_contact_email": os.getenv("CONTACT_EMAIL", "support@truenotice.app"),
-        "adsense_publisher": "ca-pub-9140574176918803",
+        "adsense_publisher": os.getenv("ADSENSE_PUBLISHER", "ca-pub-9140574176918803"),
         "adsense_slots": {
             "dashboard": os.getenv("ADSENSE_SLOT_DASHBOARD", ""),
             "detail": os.getenv("ADSENSE_SLOT_DETAIL", ""),
             "legal": os.getenv("ADSENSE_SLOT_LEGAL", ""),
         },
     }
+
+
+@app.route("/ads.txt")
+def ads_txt():
+    """Google AdSense publisher verification file."""
+    pub = os.getenv("ADSENSE_PUBLISHER", "ca-pub-9140574176918803")
+    raw_pub = pub.replace("ca-", "") if pub.startswith("ca-") else pub
+    return Response(f"google.com, {raw_pub}, DIRECT, f08c47fec0942fa0\n", mimetype="text/plain")
 
 
 @app.route("/about")

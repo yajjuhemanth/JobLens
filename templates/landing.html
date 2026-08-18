@@ -326,7 +326,7 @@ function loadLandingAdsense() {
   window.__truenoticeAdsLoaded = true;
   const script = document.createElement('script');
   script.async = true;
-  script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9140574176918803';
+  script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ adsense_publisher }}';
   script.crossOrigin = 'anonymous';
   document.head.appendChild(script);
 }
