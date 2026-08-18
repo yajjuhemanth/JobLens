@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JobLens — AI Job Notification Analyzer & Fact-Checker</title>
     <meta name="description" content="Paste a job notification URL or upload a PDF to get AI-powered fact-checking, Google Dorking for official PDFs, and a beautiful applicant dashboard.">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48x48.png') }}">
+    <link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192x192.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <meta name="theme-color" content="#1e3a8a">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -524,12 +533,32 @@
 
                 const response = await fetch('/analyze', {
                     method: 'POST',
+                    headers: { 'Accept': 'application/json' },
                     body: formData,
                 });
 
-                const result = await response.json();
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+
+                let result;
+                const text = await response.text();
+                try {
+                    result = JSON.parse(text);
+                } catch (jsonErr) {
+                    if (response.redirected || text.includes('<!DOCTYPE') || text.includes('<html')) {
+                        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                        return;
+                    }
+                    throw new Error(`Server returned unexpected response (${response.status}).`);
+                }
 
                 if (!response.ok || result.error) {
+                    if (result.login_required) {
+                        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                        return;
+                    }
                     throw new Error(result.error || `Server error (${response.status})`);
                 }
 

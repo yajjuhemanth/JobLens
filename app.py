@@ -31,7 +31,8 @@ load_dotenv()
 from functools import wraps
 from flask import (
     Flask, request, jsonify, render_template,
-    Response, abort, redirect, url_for, session, g
+    Response, abort, redirect, url_for, session, g,
+    send_from_directory
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from pydantic import BaseModel, Field, ValidationError
@@ -348,7 +349,13 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         user = get_current_user()
         if not user:
-            if request.is_json or request.path.startswith("/api/"):
+            if (
+                request.is_json
+                or request.path.startswith("/api/")
+                or request.path == "/analyze"
+                or request.method != "GET"
+                or "application/json" in request.headers.get("Accept", "")
+            ):
                 return jsonify({
                     "error": "Authentication required. Please log in.",
                     "login_required": True,
@@ -1123,6 +1130,32 @@ def handle_file_too_large(_error):
     return jsonify({"error": "File too large. Maximum upload size is 16 MB."}), 413
 
 
+@app.errorhandler(500)
+def handle_server_error(_error):
+    """Return JSON for API / analyze requests during uncaught server errors."""
+    if (
+        request.path.startswith("/api/")
+        or request.path == "/analyze"
+        or request.is_json
+        or "application/json" in request.headers.get("Accept", "")
+    ):
+        return jsonify({"error": "Internal server error occurred. Please try again."}), 500
+    return render_template("landing.html", error="Internal server error"), 500
+
+
+@app.errorhandler(404)
+def handle_not_found(_error):
+    """Return JSON 404 for API / analyze endpoints."""
+    if (
+        request.path.startswith("/api/")
+        or request.path == "/analyze"
+        or request.is_json
+        or "application/json" in request.headers.get("Accept", "")
+    ):
+        return jsonify({"error": "Resource not found."}), 404
+    return render_template("landing.html", error="Page not found"), 404
+
+
 def _vacancy_int(notif: dict) -> int:
     """Best-effort integer from a notification's total-vacancy string."""
     vac = (notif.get("data") or {}).get("vacancies") or {}
@@ -1768,6 +1801,26 @@ def inject_site_contact():
             "legal": os.getenv("ADSENSE_SLOT_LEGAL", ""),
         },
     }
+
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    """Direct favicon.ico handler for search crawlers and browser defaults."""
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+    )
+
+
+@app.route("/site.webmanifest")
+def site_webmanifest():
+    """Web app manifest for progressive web app and browser icon discovery."""
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "site.webmanifest",
+        mimetype="application/manifest+json",
+    )
 
 
 @app.route("/ads.txt")

@@ -281,9 +281,33 @@
         try {
             const fd = new FormData();
             if (selectedFile) fd.append('pdf', selectedFile); else fd.append('url', url);
-            const r = await fetch('/analyze', { method: 'POST', body: fd });
-            const data = await r.json();
-            if (!r.ok || data.error) throw new Error(data.error || `Server error (${r.status})`);
+            const r = await fetch('/analyze', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                body: fd
+            });
+            if (r.status === 401) {
+                window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                return;
+            }
+            let data;
+            const text = await r.text();
+            try {
+                data = JSON.parse(text);
+            } catch (jsonErr) {
+                if (r.redirected || text.includes('<!DOCTYPE') || text.includes('<html')) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+                throw new Error(`Server returned unexpected response (${r.status}).`);
+            }
+            if (!r.ok || data.error) {
+                if (data.login_required) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+                throw new Error(data.error || `Server error (${r.status})`);
+            }
             window.location.href = '/notification/' + data.id;
         } catch (err) {
             stopLoading(); analyzeBtn.disabled = false;

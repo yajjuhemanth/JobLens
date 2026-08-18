@@ -7,7 +7,14 @@
 <meta name="description" content="TrueNotice reads any government or private recruitment notice, cross-checks every date, vacancy and fee against the official source, and tells you if you're eligible — before you apply.">
 <link rel="canonical" href="{{ request.url_root.rstrip('/') }}{{ request.path }}">
 <meta name="robots" content="index, follow">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d4ed8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h16M4 12h10M4 17h7'/><path d='M15 15l2.5 2.5L22 13'/></svg>">
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48x48.png') }}">
+<link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192x192.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+<meta name="theme-color" content="#1e3a8a">
 
 <!-- Open Graph -->
 <meta property="og:site_name" content="TrueNotice">
@@ -15,11 +22,13 @@
 <meta property="og:title" content="TrueNotice — Verified Job Notifications You Can Actually Trust">
 <meta property="og:description" content="Every notification, fact-checked against official sources. Dates, vacancies, fees and your personal eligibility — verified before you apply.">
 <meta property="og:url" content="{{ request.url_root.rstrip('/') }}{{ request.path }}">
+<meta property="og:image" content="{{ request.url_root.rstrip('/') }}{{ url_for('static', filename='og-image.png') }}">
 
 <!-- Twitter -->
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="TrueNotice — Verified Job Notifications">
 <meta name="twitter:description" content="Fact-checked government & private job notifications, matched to your eligibility.">
+<meta name="twitter:image" content="{{ request.url_root.rstrip('/') }}{{ url_for('static', filename='og-image.png') }}">
 
 <!-- Structured data — helps search & AI answer engines describe the product truthfully -->
 <script type="application/ld+json">
