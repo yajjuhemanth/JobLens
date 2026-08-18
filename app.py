@@ -28,9 +28,10 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+from functools import wraps
 from flask import (
     Flask, request, jsonify, render_template,
-    Response, abort, redirect, url_for
+    Response, abort, redirect, url_for, session, g
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from pydantic import BaseModel, Field, ValidationError
@@ -324,15 +325,38 @@ _JOB_DETAILS_SCHEMA = _to_strict_json_schema(JobDetails)
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
 app.secret_key = os.environ.get("FLASK_SECRET", os.urandom(32).hex())
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
-# Render sits in front of this app as a reverse proxy — without this, Flask
-# sees the internal http:// connection, not the public https://truenotice.me
-# request, which would corrupt every canonical/OG/sitemap URL built from
-# request.url_root.
+# Render sits in front of this app as a reverse proxy
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # Ensure the SQLite schema exists before any request is served.
 db.init_db()
+
+
+def get_current_user() -> Optional[dict]:
+    """Fetch the authenticated user from session if present."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    return db.get_user_by_id(user_id)
+
+
+def login_required(f):
+    """Enforce user authentication on protected routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            if request.is_json or request.path.startswith("/api/"):
+                return jsonify({
+                    "error": "Authentication required. Please log in.",
+                    "login_required": True,
+                }), 401
+            next_url = request.full_path if request.query_string else request.path
+            return redirect(url_for("login", next=next_url))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1144,21 +1168,92 @@ def org_of(notif: dict) -> Optional[str]:
 @app.route("/")
 def index():
     """Public landing page — the marketing front door for TrueNotice."""
-    notifications = db.list_notifications()
-    # A few honest counts so the page can show live proof instead of stock claims.
+    total_count = db.count_all_notifications()
     stats = {
-        "tracked": len(notifications),
-        # A spread across sectors so the strip signals "any job", not just govt exams.
+        "tracked": total_count,
         "sources": ["SSC", "UPSC", "IBPS", "Railway RRB", "State PSCs", "PSUs", "Private employers", "Company careers"],
     }
     return render_template("landing.html", stats=stats)
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Sign-in view and handler."""
+    if request.method == "GET":
+        if get_current_user():
+            return redirect(url_for("dashboard"))
+        return render_template("login.html", next=request.args.get("next", ""))
+
+    payload = request.get_json(silent=True) if request.is_json else request.form
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+    next_url = payload.get("next") or request.args.get("next") or url_for("dashboard")
+
+    user = db.authenticate_user(email, password)
+    if not user:
+        if request.is_json:
+            return jsonify({"error": "Invalid email or password."}), 401
+        return render_template("login.html", error="Invalid email or password.", email=email, next=next_url), 400
+
+    session["user_id"] = user["id"]
+    session.permanent = True
+
+    if request.is_json:
+        return jsonify({"success": True, "user": user, "redirect": next_url})
+    return redirect(next_url)
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    """Sign-up view and handler."""
+    if request.method == "GET":
+        if get_current_user():
+            return redirect(url_for("dashboard"))
+        return render_template("signup.html", next=request.args.get("next", ""))
+
+    payload = request.get_json(silent=True) if request.is_json else request.form
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+    name = (payload.get("name") or "").strip()
+    next_url = payload.get("next") or request.args.get("next") or url_for("dashboard")
+
+    user, err = db.create_user(email=email, password=password, name=name)
+    if err or not user:
+        if request.is_json:
+            return jsonify({"error": err or "Registration failed."}), 400
+        return render_template("signup.html", error=err or "Registration failed.", email=email, name=name, next=next_url), 400
+
+    session["user_id"] = user["id"]
+    session.permanent = True
+
+    if request.is_json:
+        return jsonify({"success": True, "user": user, "redirect": next_url})
+    return redirect(next_url)
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    """Sign out the current user."""
+    session.pop("user_id", None)
+    if request.is_json:
+        return jsonify({"success": True})
+    return redirect(url_for("index"))
+
+
+@app.route("/api/auth/status")
+def api_auth_status():
+    """Return JSON authentication status."""
+    user = get_current_user()
+    return jsonify({"logged_in": user is not None, "user": user})
+
+
 @app.route("/dashboard")
+@login_required
 def dashboard():
-    """Home dashboard — aggregate view of all tracked notifications."""
-    notifications = db.list_notifications()
-    profile = db.get_profile()
+    """Home dashboard — aggregate view of the authenticated user's tracked notifications."""
+    user = get_current_user()
+    notifications = db.list_notifications(user["id"])
+    profile = db.get_profile(user["id"])
 
     closing_soon = 0
     total_vacancies = 0
@@ -1352,10 +1447,12 @@ def build_faq_ld(notif: dict) -> Optional[dict]:
 @app.route("/notification/<notif_id>")
 def notification_detail(notif_id):
     """Redesigned detail view for a single saved notification."""
-    notif = db.get_notification(notif_id)
+    user = get_current_user()
+    user_id = user["id"] if user else None
+    notif = db.get_notification(notif_id, user_id=user_id) or db.get_notification(notif_id)
     if not notif:
         abort(404)
-    profile = db.get_profile()
+    profile = db.get_profile(user_id) if user_id else None
     return render_template(
         "detail.html",
         notif=notif,
@@ -1366,6 +1463,7 @@ def notification_detail(notif_id):
 
 
 @app.route("/analyze", methods=["POST"])
+@login_required
 def analyze():
     """
     Analyze a job notification from a URL or uploaded PDF.
@@ -1376,6 +1474,7 @@ def analyze():
         - form file  "pdf": a .pdf file upload
     """
     try:
+        user = get_current_user()
         url = request.form.get("url", "").strip()
         pdf_file = request.files.get("pdf")
         content = ""
@@ -1422,6 +1521,7 @@ def analyze():
 
         # ── Persist so the Home dashboard / watchlist can track it ──
         notif_id = db.save_notification(
+            user_id=user["id"],
             data=result,
             analysis_text=analysis_text,
             source_type="pdf" if source_url == "" else "url",
@@ -1500,24 +1600,41 @@ def download_ics():
 # ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/notifications")
+@login_required
 def api_list_notifications():
-    """Return all saved notifications as JSON (for live refresh)."""
-    return jsonify({"notifications": db.list_notifications()})
+    """Return all saved notifications for current user as JSON (for live refresh)."""
+    user = get_current_user()
+    return jsonify({"notifications": db.list_notifications(user["id"])})
 
 
 @app.route("/api/notifications/<notif_id>/pin", methods=["POST"])
+@login_required
 def api_toggle_pin(notif_id):
     """Toggle the watchlist/pin flag."""
-    new_val = db.toggle_pinned(notif_id)
+    user = get_current_user()
+    new_val = db.toggle_pinned(notif_id, user["id"])
     if new_val is None:
-        return jsonify({"error": "Notification not found."}), 404
+        notif = db.get_notification(notif_id)
+        if not notif:
+            return jsonify({"error": "Notification not found."}), 404
+        clone_id = db.save_notification(
+            user_id=user["id"],
+            data=notif["data"],
+            analysis_text=notif.get("analysis_text") or "",
+            source_type=notif.get("source_type") or "url",
+            source_url=notif.get("source_url") or "",
+        )
+        db.set_pinned(clone_id, user["id"], True)
+        return jsonify({"success": True, "pinned": True, "cloned_id": clone_id})
     return jsonify({"success": True, "pinned": new_val})
 
 
 @app.route("/api/notifications/<notif_id>", methods=["DELETE"])
+@login_required
 def api_delete_notification(notif_id):
     """Delete a notification."""
-    if not db.delete_notification(notif_id):
+    user = get_current_user()
+    if not db.delete_notification(notif_id, user["id"]):
         return jsonify({"error": "Notification not found."}), 404
     return jsonify({"success": True})
 
@@ -1527,13 +1644,16 @@ def api_delete_notification(notif_id):
 # ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/profile", methods=["GET", "POST"])
+@login_required
 def api_profile():
-    """Read or upsert the single applicant profile."""
+    """Read or upsert the applicant profile."""
+    user = get_current_user()
     if request.method == "GET":
-        return jsonify({"profile": db.get_profile()})
+        return jsonify({"profile": db.get_profile(user["id"])})
 
     payload = request.get_json(silent=True) or {}
     profile = db.save_profile(
+        user_id=user["id"],
         dob=(payload.get("dob") or "").strip(),
         category=(payload.get("category") or "").strip(),
         gender=(payload.get("gender") or "").strip(),
@@ -1543,15 +1663,16 @@ def api_profile():
 
 
 @app.route("/api/profile/extra", methods=["POST"])
+@login_required
 def api_profile_extra():
-    """Merge notification-specific eligibility answers (domicile, language, etc.)
-    into the profile's dynamic field store."""
+    """Merge notification-specific eligibility answers into the profile's dynamic field store."""
+    user = get_current_user()
     payload = request.get_json(silent=True) or {}
     answers = payload.get("answers")
     if not isinstance(answers, dict):
         return jsonify({"error": "answers must be an object"}), 400
     answers = {str(k).strip(): str(v).strip() for k, v in answers.items() if str(k).strip()}
-    profile = db.save_profile_extra(answers)
+    profile = db.save_profile_extra(user["id"], answers)
     return jsonify({"success": True, "profile": profile})
 
 
@@ -1560,19 +1681,14 @@ def api_profile_extra():
 # ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/notifications/<notif_id>/eligibility", methods=["POST"])
+@login_required
 def api_eligibility(notif_id):
-    """Run (and cache) an eligibility check for the saved profile.
-
-    Notifications carry their own dynamic eligibility_requirements (fields
-    beyond age/category/gender/qualification, e.g. domicile or local-language
-    proficiency). If any of those aren't yet answered, respond with
-    need_fields instead of running the check, so the caller can prompt for
-    exactly the facts this notification requires.
-    """
-    notif = db.get_notification(notif_id)
+    """Run (and cache) an eligibility check for the saved profile."""
+    user = get_current_user()
+    notif = db.get_notification(notif_id, user_id=user["id"]) or db.get_notification(notif_id)
     if not notif:
         return jsonify({"error": "Notification not found."}), 404
-    profile = db.get_profile()
+    profile = db.get_profile(user["id"])
     if not profile or not profile.get("dob"):
         return jsonify({"error": "Set your profile first to check eligibility."}), 400
 
@@ -1591,7 +1707,7 @@ def api_eligibility(notif_id):
         logger.exception("Eligibility check failed")
         return jsonify({"error": f"Eligibility check failed: {e}"}), 500
 
-    db.set_eligibility(notif_id, verdict)
+    db.set_eligibility(notif_id, user["id"], verdict)
     return jsonify({"success": True, "eligibility": verdict})
 
 
@@ -1624,11 +1740,14 @@ def api_ask(notif_id):
 @app.route("/compare")
 def compare():
     """Side-by-side comparison of 2–3 saved notifications."""
+    user = get_current_user()
+    user_id = user["id"] if user else None
     ids = [i for i in request.args.get("ids", "").split(",") if i]
     notifs = [n for n in (db.get_notification(i) for i in ids[:3]) if n]
     if len(notifs) < 2:
         return redirect(url_for("index"))
-    return render_template("compare.html", notifs=notifs, profile=db.get_profile())
+    profile = db.get_profile(user_id) if user_id else None
+    return render_template("compare.html", notifs=notifs, profile=profile)
 
 
 # ---------------------------------------------------------------------------
@@ -1637,8 +1756,10 @@ def compare():
 
 @app.context_processor
 def inject_site_contact():
-    """Expose the configured support address to pages and the shared footer."""
+    """Expose user state, support address, and ads configuration to pages."""
+    user = get_current_user()
     return {
+        "current_user": user,
         "site_contact_email": os.getenv("CONTACT_EMAIL", "support@truenotice.app"),
         "adsense_publisher": "ca-pub-9140574176918803",
         "adsense_slots": {
@@ -1774,7 +1895,7 @@ def sitemap_xml():
         {"loc": base + "/terms-of-service", "changefreq": "yearly", "priority": "0.3", "lastmod": None},
         {"loc": base + "/cookie-policy", "changefreq": "yearly", "priority": "0.3", "lastmod": None},
     ]
-    for n in db.list_notifications():
+    for n in db.list_public_notifications():
         lastmod = (n.get("created_at") or "")[:10] or None
         urls.append({
             "loc": f"{base}/notification/{n['id']}",
@@ -1804,7 +1925,7 @@ def llms_txt():
     crawlers and RAG pipelines, mirroring what robots.txt/sitemap.xml do
     for search engines.
     """
-    notifs = db.list_notifications()
+    notifs = db.list_public_notifications()
     base = request.url_root.rstrip("/")
     lines = [
         "# TrueNotice",

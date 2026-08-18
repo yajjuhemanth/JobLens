@@ -231,6 +231,10 @@
     const pinBtn = document.getElementById('pin-btn');
     pinBtn.addEventListener('click', async () => {
         const r = await fetch(`/api/notifications/${NOTIF_ID}/pin`, { method: 'POST' });
+        if (r.status === 401) {
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            return;
+        }
         if (!r.ok) return showToast('Could not update watchlist.');
         const { pinned } = await r.json();
         pinBtn.dataset.pinned = pinned;
@@ -257,6 +261,10 @@
     // form for exactly those fields instead of the verdict.
     async function runEligibilityCheck() {
         const r = await fetch(`/api/notifications/${NOTIF_ID}/eligibility`, { method: 'POST' });
+        if (r.status === 401) {
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            return;
+        }
         const data = await r.json();
         if (!r.ok || data.error) throw new Error(data.error || 'Check failed');
         if (data.need_fields && data.need_fields.length) {
