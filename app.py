@@ -506,14 +506,11 @@ def status_of(last_date_str: Optional[str]) -> dict:
 
 ALLOWED_EXTENSIONS = {"pdf"}
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-# groq/compound's own free-tier reliability is poor: its internal tool
-# orchestration secretly shares openai/gpt-oss-120b's 8,000 TPM bucket,
-# which a handful of calls exhausts (confirmed via response headers) and
-# then it rejects unrelated small requests with a misleading 413. So web
-# search is done ourselves via Tavily (predictable, generous free tier),
-# and a plain (non-agentic) model synthesizes the results.
-GROQ_ANALYSIS_MODEL = os.environ.get("GROQ_ANALYSIS_MODEL", "llama-3.3-70b-versatile")
+# Groq model configuration: openai/gpt-oss-120b for high-accuracy reasoning & extraction,
+# with automatic fallback to openai/gpt-oss-20b for high-throughput resilience.
+GROQ_ANALYSIS_MODEL = os.environ.get("GROQ_ANALYSIS_MODEL", "openai/gpt-oss-120b")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
 GROQ_MAX_RETRIES = 3
 GROQ_RETRY_BASE_DELAY = 2  # seconds; doubles each retry
 GROQ_RETRYABLE_CODES = {408, 429, 500, 502, 503, 504}
@@ -687,6 +684,34 @@ def _call_with_retry(fn):
     raise last_error
 
 
+def _call_with_model_fallback(client, create_kwargs, fallback_model=None):
+    """
+    Execute a Groq chat completion. If the primary model returns 404 (model_not_found)
+    or is decommissioned/unavailable, automatically fallback to a secondary model.
+    """
+    fallback = fallback_model or GROQ_FALLBACK_MODEL
+    primary_model = create_kwargs.get("model")
+    try:
+        return _call_with_retry(lambda: client.chat.completions.create(**create_kwargs))
+    except openai.APIStatusError as e:
+        is_model_error = (
+            e.status_code == 404
+            or (isinstance(getattr(e, "body", None), dict) and e.body.get("error", {}).get("code") in ("model_not_found", "model_decommissioned"))
+        )
+        if is_model_error and fallback and primary_model != fallback:
+            logger.warning(
+                "Model %s failed on Groq (status %s: %s). Falling back to %s…",
+                primary_model,
+                e.status_code,
+                e.message if hasattr(e, "message") else str(e),
+                fallback,
+            )
+            fallback_kwargs = dict(create_kwargs)
+            fallback_kwargs["model"] = fallback
+            return _call_with_retry(lambda: client.chat.completions.create(**fallback_kwargs))
+        raise
+
+
 def _derive_search_query(content: str) -> str:
     """Heuristic search query: the first meaningful line of the notification."""
     return " ".join(content.strip().split())[:150]
@@ -821,10 +846,10 @@ Provide a thorough, well-organized analysis covering EVERY one of these areas
 • Fact-check results and any discrepancies found"""
 
     logger.info("Step 1b — Sending search-grounded analysis request to Groq…")
-    search_response = _call_with_retry(lambda: client.chat.completions.create(
-        model=GROQ_ANALYSIS_MODEL,
-        messages=[{"role": "user", "content": search_prompt}],
-    ))
+    search_response = _call_with_model_fallback(client, {
+        "model": GROQ_ANALYSIS_MODEL,
+        "messages": [{"role": "user", "content": search_prompt}],
+    })
     analysis_text = search_response.choices[0].message.content
     if not analysis_text:
         raise ValueError(
@@ -880,10 +905,10 @@ Rules:
 === VERIFIED ANALYSIS (END) ==="""
 
     logger.info("Step 2 — Sending structured extraction request to Groq…")
-    structured_response = _call_with_retry(lambda: client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": structure_prompt}],
-        response_format={
+    structured_response = _call_with_model_fallback(client, {
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": structure_prompt}],
+        "response_format": {
             "type": "json_schema",
             "json_schema": {
                 "name": "JobDetails",
@@ -891,7 +916,7 @@ Rules:
                 "schema": _JOB_DETAILS_SCHEMA,
             },
         },
-    ))
+    })
 
     raw = structured_response.choices[0].message.content
     if not raw:
@@ -1068,10 +1093,10 @@ Rules:
 - blockers: criteria the applicant fails OR that couldn't be determined.
 - computed_age: echo the computed age if provided, else null."""
 
-    resp = _call_with_retry(lambda: client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={
+    resp = _call_with_model_fallback(client, {
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "response_format": {
             "type": "json_schema",
             "json_schema": {
                 "name": "EligibilityVerdict",
@@ -1079,7 +1104,7 @@ Rules:
                 "schema": _ELIGIBILITY_SCHEMA,
             },
         },
-    ))
+    })
     raw = resp.choices[0].message.content
     if not raw:
         raise ValueError("Groq returned an empty eligibility response.")
@@ -1112,10 +1137,10 @@ Keep the answer concise and specific. Use short bullets when listing multiple it
 
 CANDIDATE QUESTION: {question}"""
 
-    resp = _call_with_retry(lambda: client.chat.completions.create(
-        model=GROQ_ANALYSIS_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    ))
+    resp = _call_with_model_fallback(client, {
+        "model": GROQ_ANALYSIS_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+    })
     answer = resp.choices[0].message.content
     return answer or "Sorry, I couldn't generate an answer. Please try again."
 
