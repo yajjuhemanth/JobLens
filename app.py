@@ -506,11 +506,11 @@ def status_of(last_date_str: Optional[str]) -> dict:
 
 ALLOWED_EXTENSIONS = {"pdf"}
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-# Groq model configuration: openai/gpt-oss-120b for high-accuracy reasoning & extraction,
-# with automatic fallback to openai/gpt-oss-20b for high-throughput resilience.
-GROQ_ANALYSIS_MODEL = os.environ.get("GROQ_ANALYSIS_MODEL", "openai/gpt-oss-120b")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
-GROQ_FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
+# Groq model configuration: openai/gpt-oss-20b is ultra-fast, high-throughput, and reliable
+# for structured JSON extraction, with openai/gpt-oss-120b available as alternative/fallback.
+GROQ_ANALYSIS_MODEL = os.environ.get("GROQ_ANALYSIS_MODEL", "openai/gpt-oss-20b")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+GROQ_FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
 GROQ_MAX_RETRIES = 3
 GROQ_RETRY_BASE_DELAY = 2  # seconds; doubles each retry
 GROQ_RETRYABLE_CODES = {408, 429, 500, 502, 503, 504}
@@ -686,19 +686,19 @@ def _call_with_retry(fn):
 
 def _call_with_model_fallback(client, create_kwargs, fallback_model=None):
     """
-    Execute a Groq chat completion. If the primary model returns 404 (model_not_found)
-    or is decommissioned/unavailable, automatically fallback to a secondary model.
+    Execute a Groq chat completion. If the primary model returns 404 (model_not_found),
+    413 (TPM limit exceeded), 400 (validation failure), or is unavailable, automatically fallback.
     """
     fallback = fallback_model or GROQ_FALLBACK_MODEL
     primary_model = create_kwargs.get("model")
     try:
         return _call_with_retry(lambda: client.chat.completions.create(**create_kwargs))
     except openai.APIStatusError as e:
-        is_model_error = (
-            e.status_code == 404
-            or (isinstance(getattr(e, "body", None), dict) and e.body.get("error", {}).get("code") in ("model_not_found", "model_decommissioned"))
+        is_fallback_candidate = (
+            e.status_code in (400, 404, 413)
+            or (isinstance(getattr(e, "body", None), dict) and e.body.get("error", {}).get("code") in ("model_not_found", "model_decommissioned", "rate_limit_exceeded", "json_validate_failed"))
         )
-        if is_model_error and fallback and primary_model != fallback:
+        if is_fallback_candidate and fallback and primary_model != fallback:
             logger.warning(
                 "Model %s failed on Groq (status %s: %s). Falling back to %s…",
                 primary_model,
@@ -849,6 +849,7 @@ Provide a thorough, well-organized analysis covering EVERY one of these areas
     search_response = _call_with_model_fallback(client, {
         "model": GROQ_ANALYSIS_MODEL,
         "messages": [{"role": "user", "content": search_prompt}],
+        "max_tokens": 2048,
     })
     analysis_text = search_response.choices[0].message.content
     if not analysis_text:
@@ -859,6 +860,7 @@ Provide a thorough, well-organized analysis covering EVERY one of these areas
     logger.info("Step 1 complete (%d chars returned).", len(analysis_text))
 
     # ── Step 2: Structured extraction ───────────────────────────
+    trimmed_analysis = analysis_text[:GROQ_MAX_CONTENT_CHARS] if len(analysis_text) > GROQ_MAX_CONTENT_CHARS else analysis_text
     structure_prompt = f"""You are a data extraction specialist. Based on the verified analysis
 below, extract ALL job notification details into the specified JSON schema.
 
@@ -901,13 +903,14 @@ Rules:
 - For confidence_level, output exactly "High", "Medium", or "Low" based on how strongly the details were corroborated by official sources.
 
 === VERIFIED ANALYSIS (START) ===
-{analysis_text}
+{trimmed_analysis}
 === VERIFIED ANALYSIS (END) ==="""
 
     logger.info("Step 2 — Sending structured extraction request to Groq…")
     structured_response = _call_with_model_fallback(client, {
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": structure_prompt}],
+        "max_tokens": 4096,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -1096,6 +1099,7 @@ Rules:
     resp = _call_with_model_fallback(client, {
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2048,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -1140,6 +1144,7 @@ CANDIDATE QUESTION: {question}"""
     resp = _call_with_model_fallback(client, {
         "model": GROQ_ANALYSIS_MODEL,
         "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2048,
     })
     answer = resp.choices[0].message.content
     return answer or "Sorry, I couldn't generate an answer. Please try again."
